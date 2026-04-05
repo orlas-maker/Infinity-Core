@@ -466,6 +466,8 @@ client.on(Events.MessageCreate, async (msg) => {
     // 🏆 RANKINGS
     // ==========================================
     if (cmd === 'ranking') {
+        const errCanal = checkCanal(config.setupPerfil, msg.channel.id, 'Perfil');
+        if (errCanal) return void msg.reply(errCanal);
         const tipo = args[0]?.toLowerCase() ?? 'xp';
         const jugadores = Array.from(db.entries());
         type RankTipo = 'xp' | 'yenes' | 'dedos' | 'hp';
@@ -556,6 +558,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
         const target = msg.mentions.members?.first();
         if (!target) return void msg.reply("🎯 Menciona al usuario que deseas sellar.");
+        if (target.id === uid) return void msg.reply("❌ No puedes sellarte a ti mismo.");
 
         if (!db.has(target.id)) db.set(target.id, usuarioBase(target.user.username));
         const vU = db.get(target.id)!;
@@ -580,7 +583,8 @@ client.on(Events.MessageCreate, async (msg) => {
         vU.sellado = Date.now() + (item.duracion ?? 0);
         vU.rolesSellado = rolesSalvados;
         db.set(target.id, vU);
-        u.inv = u.inv.filter(i => i !== item.n);
+        const idxItemSello = u.inv.indexOf(item.n);
+        if (idxItemSello !== -1) u.inv.splice(idxItemSello, 1);
         guardarDatos();
 
         const durTexto = variante === 'pequeño' ? '10 minutos' : variante === 'estandar' ? '30 minutos' : '1 hora';
@@ -591,15 +595,22 @@ client.on(Events.MessageCreate, async (msg) => {
                 .setColor(0x4B0082)
         ]});
 
+        const targetId = target.id;
+        const targetName = target.user.username;
         setTimeout(async () => {
             try {
-                if (target.roles.cache.has(ROL_GOKUMONKYO)) await target.roles.remove(ROL_GOKUMONKYO);
-                if (vU.rolesSellado.length > 0) await target.roles.add(vU.rolesSellado);
-                vU.sellado = null;
-                vU.rolesSellado = [];
-                db.set(target.id, vU);
+                const guild = client.guilds.cache.first();
+                if (!guild) return;
+                const miembroActual = await guild.members.fetch(targetId).catch(() => null);
+                const datosActuales = db.get(targetId);
+                if (!miembroActual || !datosActuales) return;
+                if (miembroActual.roles.cache.has(ROL_GOKUMONKYO)) await miembroActual.roles.remove(ROL_GOKUMONKYO);
+                if (datosActuales.rolesSellado.length > 0) await miembroActual.roles.add(datosActuales.rolesSellado);
+                datosActuales.sellado = null;
+                datosActuales.rolesSellado = [];
+                db.set(targetId, datosActuales);
                 guardarDatos();
-                void msg.channel.send(`🔓 El sello sobre **${target.user.username}** ha expirado. Sus poderes han sido restaurados.`);
+                void msg.channel.send(`🔓 El sello sobre **${targetName}** ha expirado. Sus poderes han sido restaurados.`);
             } catch (e) { console.error("Error restaurando roles:", e); }
         }, item.duracion ?? 0);
         return;
@@ -642,11 +653,20 @@ client.on(Events.MessageCreate, async (msg) => {
     // ⚔️ EXORCIZAR BOSS ACTIVO
     // ==========================================
     if (cmd === 'exorcizar') {
+        const errCanal = checkCanal(config.setupCombate, msg.channel.id, 'Combate');
+        if (errCanal) return void msg.reply(errCanal);
         const boss = bossesActivos.get(msg.channel.id);
         if (!boss) return void msg.reply("🕊️ No hay ninguna maldición activa en este canal.");
 
         if (u.sellado && Date.now() < u.sellado) {
             return void msg.reply("⛓️ Estás sellado. No puedes exorcizar.");
+        }
+
+        const maxHpAtacante = gU.hpBase + (u.dedos * 100);
+        if (u.hp <= 0) {
+            u.hp = Math.ceil(maxHpAtacante * 0.10);
+            guardarDatos();
+            return void msg.reply("💀 Estás inconsciente. Tu HP ha sido restaurado al 10%. Espera para recuperarte.");
         }
 
         const costExorcizar = 30;
@@ -978,7 +998,7 @@ client.on(Events.MessageCreate, async (msg) => {
 
         const miembrosDelClan = msg.guild!.members.cache.filter(m => m.roles.cache.has(clanEntry.id));
         const tecnnicasClan = Object.entries(TECNICAS).filter(([, t]) => t.clan === clanEntry.id);
-        const tecnicasLista = tecnnicasClan.slice(0, 8).map(([cmd]) => `\`${cmd}\``).join(', ') +
+        const tecnicasLista = tecnnicasClan.slice(0, 8).map(([tecCmd]) => `\`${tecCmd}\``).join(', ') +
             (tecnnicasClan.length > 8 ? ` y ${tecnnicasClan.length - 8} más...` : '');
 
         const embed = new EmbedBuilder()
@@ -1094,6 +1114,13 @@ client.on(Events.MessageCreate, async (msg) => {
             return void msg.reply("⛓️ Estás sellado. No puedes usar técnicas.");
         }
 
+        if (u.hp <= 0) {
+            const maxHpU = gU.hpBase + (u.dedos * 100);
+            u.hp = Math.ceil(maxHpU * 0.10);
+            guardarDatos();
+            return void msg.reply("💀 Estás inconsciente. Tu HP ha sido restaurado al 10%. Espera a recuperarte antes de atacar.");
+        }
+
         const equip = u.equipado ? EQUIPAMIENTO[u.equipado] : null;
 
         if (tech.clan && !msg.member.roles.cache.has(tech.clan) && !equip?.sinClan) {
@@ -1187,7 +1214,7 @@ client.on(Events.MessageCreate, async (msg) => {
         // --- PACTO: daño compartido ---
         if (v.pactadoCon && db.has(v.pactadoCon)) {
             const pactadoU = db.get(v.pactadoCon)!;
-            pactadoU.hp -= Math.ceil(danoFinal / 2);
+            pactadoU.hp = Math.max(0, pactadoU.hp - Math.ceil(danoFinal / 2));
             db.set(v.pactadoCon, pactadoU);
         }
 
