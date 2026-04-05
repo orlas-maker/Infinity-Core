@@ -1,67 +1,165 @@
 /**
  * 🏯 JUJUTSU KAISEN: SHINJUKU SHOWDOWN - ETERNITY ENGINE
  * @developer Orlas (José Orlando)
- * @version 9.0 - EXPANSIÓN DE CLANES
+ * @version 10.0 - MOTOR COMPLETO
  * SISTEMAS INCLUIDOS:
  * - 120 Técnicas Totales (7 Clanes).
  * - Identificación por Roles Reales.
  * - Pasiva Seis Ojos (99% reducción EN).
  * - Choque de Dominios (Prioridad por XP).
  * - Tienda, Economía y Sistema de Dedos (1-20).
- * - Eventos de Bosses Aleatorios.
+ * - Eventos de Bosses Aleatorios (timer autónomo c/30min).
  * - Sistema Gokumonkyō 3 variantes (Pequeño/Estándar/Eterno).
- * - Spawn Autónomo (Maldiciones c/30min, Callejón c/15min).
+ * - Spawn Autónomo Callejón c/15min.
  * - Sistema de Equipamiento con Buffs reales.
  * - Comandos de Dios (Admins).
- * - Mejoras God: !meditar, !pactar, Reliquia de Sukuna.
+ * - RCT: cura al lanzador, sin objetivo.
+ * - Rankings separados: XP, Yenes, Dedos, HP.
+ * - !exorcizar, !inventario.
  */
 
-require('dotenv').config();
-const fs = require('fs');
-const { Client, GatewayIntentBits, Events, EmbedBuilder } = require('discord.js');
+import 'dotenv/config';
+import fs from 'fs';
+import http from 'http';
+import { Client, GatewayIntentBits, Events, EmbedBuilder, TextChannel } from 'discord.js';
 
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
-    ]
-});
+// ==========================================
+// 💾 TIPOS
+// ==========================================
+interface Usuario {
+    n: string;
+    hp: number;
+    en: number;
+    y: number;
+    xp: number;
+    dedos: number;
+    inv: string[];
+    lastDom: number;
+    sellado: number | null;
+    rolesSellado: string[];
+    equipado: string | null;
+    meditarCooldown: number;
+    trabajarCooldown: number;
+    pactadoCon: string | null;
+    tieneBrazo: boolean;
+}
+
+interface Config {
+    setupMaldiciones: string | null;
+    setupCallejon: string | null;
+    itemCallejonActual: string | null;
+    itemCallejonExpira: number | null;
+    setupTrabajo: string | null;
+    setupCombate: string | null;
+    setupTienda: string | null;
+    setupPerfil: string | null;
+    setupBot: string | null;
+}
+
+interface Grado {
+    n: string;
+    xp: number;
+    dmgM: number;
+    hpBase: number;
+    enBase: number;
+}
+
+interface Tecnica {
+    n: string;
+    d: number;
+    c: number;
+    g: string;
+    clan: string;
+    dom?: boolean;
+    def?: boolean;
+    buff?: boolean;
+    gif?: string;
+}
+
+interface ItemTienda {
+    n: string;
+    precio: number;
+    desc: string;
+    duracion?: number;
+}
+
+interface ItemEquipamiento {
+    desc: string;
+    sinClan?: boolean;
+    dmgBossBonus?: number;
+    dmgBonus?: number;
+    dmgZeninBonus?: number;
+    ignoraDef?: boolean;
+    regenX2?: boolean;
+}
+
+interface SpawnConfig {
+    n: string;
+    hp: number;
+    y: number;
+    xp: number;
+    prob: number;
+}
+
+interface BossActivo {
+    s: SpawnConfig;
+    hpActual: number;
+}
 
 // ==========================================
 // 💾 SISTEMA DE BASE DE DATOS LOCAL
 // ==========================================
-let db = new Map();
+let db = new Map<string, Usuario>();
 const DB_PATH = './shinjuku_data.json';
 const CONFIG_PATH = './shinjuku_config.json';
-let config = { setupMaldiciones: null, setupCallejon: null, itemCallejonActual: null, itemCallejonExpira: null };
+let config: Config = {
+    setupMaldiciones: null,
+    setupCallejon: null,
+    itemCallejonActual: null,
+    itemCallejonExpira: null,
+    setupTrabajo: null,
+    setupCombate: null,
+    setupTienda: null,
+    setupPerfil: null,
+    setupBot: null,
+};
 
-const usuarioBase = (nombre) => ({
+const bossesActivos = new Map<string, BossActivo>();
+
+// Helper: verifica si el comando se usa en el canal correcto
+const checkCanal = (canalConfig: string | null, msgChannelId: string, nombreCanal: string): string | null => {
+    if (!canalConfig) return null; // sin restricción configurada
+    if (msgChannelId !== canalConfig) return `❌ Este comando solo puede usarse en <#${canalConfig}> (zona de **${nombreCanal}**).`;
+    return null;
+};
+
+const usuarioBase = (nombre: string): Usuario => ({
     n: nombre, hp: 200, en: 200, y: 5000, xp: 0, dedos: 0,
     inv: [], lastDom: 0, sellado: null, rolesSellado: [],
-    equipado: null, meditarCooldown: 0, pactadoCon: null, tieneBrazo: false
+    equipado: null, meditarCooldown: 0, trabajarCooldown: 0, pactadoCon: null, tieneBrazo: false
 });
 
-const cargarDatos = () => {
+const cargarDatos = (): void => {
     if (fs.existsSync(DB_PATH)) {
         try {
-            db = new Map(Object.entries(JSON.parse(fs.readFileSync(DB_PATH, 'utf8'))));
+            const raw = JSON.parse(fs.readFileSync(DB_PATH, 'utf8')) as Record<string, Usuario>;
+            db = new Map(Object.entries(raw));
             console.log("✅ Datos cargados correctamente.");
-        } catch (e) { console.error("Error leyendo BD."); }
+        } catch { console.error("Error leyendo BD."); }
     }
     if (fs.existsSync(CONFIG_PATH)) {
         try {
-            config = { ...config, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) };
-        } catch (e) { console.error("Error leyendo Config."); }
+            const rawCfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) as Partial<Config>;
+            config = { ...config, ...rawCfg };
+        } catch { console.error("Error leyendo Config."); }
     }
 };
 
-const guardarDatos = () => {
+const guardarDatos = (): void => {
     fs.writeFileSync(DB_PATH, JSON.stringify(Object.fromEntries(db), null, 4));
 };
 
-const guardarConfig = () => {
+const guardarConfig = (): void => {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4));
 };
 
@@ -76,13 +174,13 @@ const CLANES = {
     MALDICION:{ id: "1482429681428201552", emoji: "👾", n: "Maldición" },
     KAMO:     { id: "1482428425988866210", emoji: "🩸", n: "Kamo" },
     INUMAKI:  { id: "1482428594792693781", emoji: "🗣️", n: "Inumaki" }
-};
+} as const;
 
 const ROL_MIEMBRO         = "1482429543883997347";
 const ROL_GOKUMONKYO      = "1482489278562045964";
 const ROL_REY_MALDICIONES = "1482429120469139526";
 
-const GRADOS = [
+const GRADOS: Grado[] = [
     { n: "Grado 4",        xp: 0,      dmgM: 1.0,  hpBase: 200,   enBase: 200   },
     { n: "Grado 3",        xp: 5000,   dmgM: 2.5,  hpBase: 600,   enBase: 700   },
     { n: "Grado 2",        xp: 20000,  dmgM: 6.0,  hpBase: 1500,  enBase: 1800  },
@@ -90,12 +188,13 @@ const GRADOS = [
     { n: "Grado Especial", xp: 150000, dmgM: 30.0, hpBase: 12000, enBase: 15000 }
 ];
 
-const getGrado = (xp) => GRADOS.slice().reverse().find(g => xp >= g.xp) || GRADOS[0];
+const getGrado = (xp: number): Grado =>
+    GRADOS.slice().reverse().find(g => xp >= g.xp) ?? GRADOS[0];
 
 // ==========================================
 // ⚔️ DICCIONARIO: 120 TÉCNICAS (7 CLANES)
 // ==========================================
-const TECNICAS = {
+const TECNICAS: Record<string, Tecnica> = {
     // --- LINAJE GOJO (20) ---
     '!azul':             { n: "Azul (Laplace)",          d: 150,  c: 100,  g: "Grado 3",        clan: CLANES.GOJO.id },
     '!rojo':             { n: "Rojo (Inversión)",         d: 350,  c: 250,  g: "Grado 2",        clan: CLANES.GOJO.id },
@@ -104,7 +203,7 @@ const TECNICAS = {
     '!infinito':         { n: "Mugen (Barrera)",          d: 0,    c: 200,  g: "Grado 3",        clan: CLANES.GOJO.id, def: true },
     '!seisojos':         { n: "Despertar Seis Ojos",      d: 0,    c: 0,    g: "Grado Especial",  clan: CLANES.GOJO.id, buff: true },
     '!teleport':         { n: "Salto Espacial",           d: 50,   c: 80,   g: "Grado 3",        clan: CLANES.GOJO.id },
-    '!rct_gojo':         { n: "Técnica Inversa",          d: -400, c: 800,  g: "Grado 2",        clan: CLANES.GOJO.id },
+    '!rct_gojo':         { n: "Técnica Inversa (RCT)",    d: -400, c: 800,  g: "Grado 2",        clan: CLANES.GOJO.id },
     '!vuelo':            { n: "Levitación",               d: 10,   c: 30,   g: "Grado 4",        clan: CLANES.GOJO.id },
     '!brillo':           { n: "Brillo Maldito",           d: 80,   c: 50,   g: "Grado 4",        clan: CLANES.GOJO.id },
     '!destello_gojo':    { n: "Kokusen",                  d: 600,  c: 400,  g: "Grado 1",        clan: CLANES.GOJO.id },
@@ -180,7 +279,7 @@ const TECNICAS = {
     '!toque_alma':       { n: "Deformación",              d: 800,  c: 600,  g: "Grado 1",        clan: CLANES.MALDICION.id },
     '!espina':           { n: "Madera Maldita",           d: 150,  c: 100,  g: "Grado 4",        clan: CLANES.MALDICION.id },
     '!armadura':         { n: "Corteza de Hanami",        d: 0,    c: 400,  g: "Grado 2",        clan: CLANES.MALDICION.id, def: true },
-    '!regen_maldita':    { n: "Curación de Maldición",   d: -400, c: 300,  g: "Grado 2",        clan: CLANES.MALDICION.id },
+    '!regen_maldita':    { n: "Curación de Maldición",    d: -400, c: 300,  g: "Grado 2",        clan: CLANES.MALDICION.id },
     '!aura_desastre':    { n: "Miedo Humano",             d: 250,  c: 250,  g: "Grado 3",        clan: CLANES.MALDICION.id },
     '!explosion':        { n: "Detonación de Jogo",       d: 1200, c: 900,  g: "Grado 1",        clan: CLANES.MALDICION.id },
 
@@ -234,32 +333,45 @@ const TECNICAS = {
 // ==========================================
 // 🛒 TIENDA Y ARTÍCULOS
 // ==========================================
-const TIENDA = {
-    'dedo':                { n: "Dedo de Sukuna",           precio: 100000, desc: "+500 EN y +10% Daño permanentemente." },
-    'gokumonkyo_pequeño':  { n: "Gokumonkyō (Pequeño)",    precio: 50000,  desc: "Sella a un usuario por 10 minutos.", duracion: 10 * 60 * 1000 },
-    'gokumonkyo_estandar': { n: "Gokumonkyō (Estándar)",   precio: 120000, desc: "Sella a un usuario por 30 minutos.", duracion: 30 * 60 * 1000 },
-    'gokumonkyo_eterno':   { n: "Gokumonkyō (Eterno)",     precio: 250000, desc: "Sella a un usuario por 1 hora.",     duracion: 60 * 60 * 1000 }
+const TIENDA: Record<string, ItemTienda> = {
+    'dedo':                { n: "Dedo de Sukuna",          precio: 100000, desc: "+500 EN y +10% Daño permanentemente." },
+    'gokumonkyo_pequeño':  { n: "Gokumonkyō (Pequeño)",   precio: 50000,  desc: "Sella a un usuario por 10 minutos.",  duracion: 10 * 60 * 1000 },
+    'gokumonkyo_estandar': { n: "Gokumonkyō (Estándar)",  precio: 120000, desc: "Sella a un usuario por 30 minutos.", duracion: 30 * 60 * 1000 },
+    'gokumonkyo_eterno':   { n: "Gokumonkyō (Eterno)",    precio: 250000, desc: "Sella a un usuario por 1 hora.",     duracion: 60 * 60 * 1000 },
+    'gafas_maki':          { n: "Gafas de Maki",           precio: 80000,  desc: "Atacar sin clan. +20% daño a Bosses." },
+    'nube_itinerante':     { n: "Nube Itinerante",          precio: 200000, desc: "+50% daño general (+75% contra Zenin)." },
+    'lanza_invertida':     { n: "Lanza Invertida",          precio: 150000, desc: "El daño ignora la defensa del enemigo." }
 };
 
 // ==========================================
 // 🎒 EQUIPAMIENTO Y EFECTOS
 // ==========================================
-const EQUIPAMIENTO = {
-    'Gafas de Maki':    { desc: "Atacar sin clan. +20% daño a Bosses.",         sinClan: true,  dmgBossBonus: 1.20 },
-    'Nube Itinerante':  { desc: "+50% daño general (+75% contra Zenin).",       dmgBonus: 1.50, dmgZeninBonus: 1.75 },
-    'Lanza Invertida':  { desc: "El daño ignora la defensa del enemigo.",       ignoraDef: true },
-    'Brazo de Sukuna':  { desc: "Regeneración de Energía Maldita x2/minuto.",  regenX2: true }
+const EQUIPAMIENTO: Record<string, ItemEquipamiento> = {
+    'Gafas de Maki':   { desc: "Atacar sin clan. +20% daño a Bosses.",        sinClan: true,  dmgBossBonus: 1.20 },
+    'Nube Itinerante': { desc: "+50% daño general (+75% contra Zenin).",       dmgBonus: 1.50, dmgZeninBonus: 1.75 },
+    'Lanza Invertida': { desc: "El daño ignora la defensa del enemigo.",       ignoraDef: true },
+    'Brazo de Sukuna': { desc: "Regeneración de Energía Maldita x2/minuto.",  regenX2: true }
 };
 
 // ==========================================
-// 👾 SPAWN DE BOSSES (aleatorio en mensajes)
+// 👾 SPAWN DE BOSSES
 // ==========================================
-const SPAWNS = [
-    { n: "Maldición de Grado 4",        hp: 300,   y: 2000,    xp: 200,    prob: 0.10  },
-    { n: "Maldición de Grado 1",        hp: 5000,  y: 30000,   xp: 4000,   prob: 0.04  },
-    { n: "BOSS: Toji Fushiguro",        hp: 20000, y: 200000,  xp: 25000,  prob: 0.01  },
-    { n: "BOSS: Rey de las Maldiciones",hp: 80000, y: 1000000, xp: 100000, prob: 0.002 }
+const SPAWNS: SpawnConfig[] = [
+    { n: "Maldición de Grado 4",         hp: 300,   y: 2000,    xp: 200,    prob: 0.10  },
+    { n: "Maldición de Grado 1",         hp: 5000,  y: 30000,   xp: 4000,   prob: 0.04  },
+    { n: "BOSS: Toji Fushiguro",         hp: 20000, y: 200000,  xp: 25000,  prob: 0.01  },
+    { n: "BOSS: Rey de las Maldiciones", hp: 80000, y: 1000000, xp: 100000, prob: 0.002 }
 ];
+
+const spawnBossAleatorio = (): SpawnConfig => {
+    const total = SPAWNS.reduce((acc, s) => acc + s.prob, 0);
+    let r = Math.random() * total;
+    for (const s of SPAWNS) {
+        r -= s.prob;
+        if (r <= 0) return s;
+    }
+    return SPAWNS[0];
+};
 
 // ==========================================
 // 🎁 ITEMS DEL CALLEJÓN
@@ -270,93 +382,160 @@ const ITEMS_CALLEJON = {
     especial: ["Gokumonkyō (Pequeño)", "Gokumonkyō (Estándar)", "Gokumonkyō (Eterno)", "Brazo de Sukuna"]
 };
 
+const spawnItemCallejon = (): string => {
+    const r = Math.random();
+    let lista: string[];
+    if (r < 0.60) lista = ITEMS_CALLEJON.comun;
+    else if (r < 0.90) lista = ITEMS_CALLEJON.raro;
+    else lista = ITEMS_CALLEJON.especial;
+    return lista[Math.floor(Math.random() * lista.length)];
+};
+
+// ==========================================
+// 🤖 CLIENTE DISCORD
+// ==========================================
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
+
 // ==========================================
 // ⚙️ MOTOR DE EVENTOS
 // ==========================================
 client.on(Events.MessageCreate, async (msg) => {
     if (msg.author.bot) return;
-    const uid = msg.author.id;
+    if (!msg.member || !msg.guild) return;
 
-    if (!db.has(uid)) {
-        db.set(uid, usuarioBase(msg.author.username));
-    }
-    const u = db.get(uid);
+    const uid = msg.author.id;
+    if (!db.has(uid)) db.set(uid, usuarioBase(msg.author.username));
+    const u = db.get(uid)!;
     const gU = getGrado(u.xp);
 
-    // --- 👁️ LÓGICA DE SEIS OJOS ---
+    // --- 👁️ SEIS OJOS ---
     let costoMultiplicador = 1.0;
     if (msg.member.roles.cache.has(CLANES.GOJO.id) && gU.n === "Grado Especial") {
         costoMultiplicador = 0.01;
     }
 
-    // --- 👾 SPAWN ALEATORIO ---
-    SPAWNS.forEach(s => {
-        if (Math.random() < s.prob) {
-            msg.channel.send({ embeds: [
-                new EmbedBuilder()
-                    .setTitle(`🚨 ALERTA: ${s.n}`)
-                    .setDescription(`❤️ HP: ${s.hp} | 💴 Yenes: $${s.y.toLocaleString()}\nUsa \`!exorcizar\` en este canal.`)
-                    .setColor(0x000000)
-            ]});
-        }
-    });
-
     if (!msg.content.startsWith('!')) return;
     const args = msg.content.slice(1).trim().split(/ +/);
-    const cmd = args.shift().toLowerCase();
+    const cmd = args.shift()!.toLowerCase();
 
     // ==========================================
     // 📋 PERFIL
     // ==========================================
     if (cmd === 'perfil') {
+        const errCanal = checkCanal(config.setupPerfil, msg.channel.id, 'Perfil');
+        if (errCanal) return void msg.reply(errCanal);
         const embed = new EmbedBuilder()
             .setAuthor({ name: `Hechicero: ${u.n}`, iconURL: msg.author.displayAvatarURL() })
             .addFields(
-                { name: '🎖️ Grado',    value: gU.n,                                              inline: true },
-                { name: '💴 Yenes',    value: `$${u.y.toLocaleString()}`,                        inline: true },
-                { name: '✨ XP',       value: `${u.xp.toLocaleString()}`,                        inline: true },
-                { name: '❤️ HP',       value: `${Math.floor(u.hp)}/${gU.hpBase+(u.dedos*100)}`, inline: true },
-                { name: '⚡ Energía',  value: `${Math.floor(u.en)}/${gU.enBase+(u.dedos*500)}`, inline: true },
-                { name: '☝️ Dedos',    value: `${u.dedos}/20`,                                   inline: true },
-                { name: '🎒 Equipado', value: u.equipado || 'Ninguno',                           inline: true },
+                { name: '🎖️ Grado',    value: gU.n,                                                    inline: true },
+                { name: '💴 Yenes',    value: `$${u.y.toLocaleString()}`,                              inline: true },
+                { name: '✨ XP',       value: `${u.xp.toLocaleString()}`,                              inline: true },
+                { name: '❤️ HP',       value: `${Math.floor(u.hp)}/${gU.hpBase + (u.dedos * 100)}`,   inline: true },
+                { name: '⚡ Energía',  value: `${Math.floor(u.en)}/${gU.enBase + (u.dedos * 500)}`,   inline: true },
+                { name: '☝️ Dedos',    value: `${u.dedos}/20`,                                         inline: true },
+                { name: '🎒 Equipado', value: u.equipado ?? 'Ninguno',                                 inline: true },
                 { name: '⛓️ Estado',   value: (u.sellado && Date.now() < u.sellado) ? '🔒 Sellado' : '✅ Libre', inline: true }
             )
             .setColor(gU.n === "Grado Especial" ? 0xFFD700 : 0xFFFFFF);
-        return msg.reply({ embeds: [embed] });
+        return void msg.reply({ embeds: [embed] });
+    }
+
+    // ==========================================
+    // 🎒 INVENTARIO
+    // ==========================================
+    if (cmd === 'inventario') {
+        const errCanal = checkCanal(config.setupPerfil, msg.channel.id, 'Perfil');
+        if (errCanal) return void msg.reply(errCanal);
+        const inv = u.inv.length > 0 ? u.inv.map((i, idx) => `**${idx + 1}.** ${i}`).join('\n') : '_Inventario vacío_';
+        const embed = new EmbedBuilder()
+            .setTitle(`🎒 Inventario de ${u.n}`)
+            .setDescription(inv)
+            .addFields({ name: '🎒 Equipado ahora', value: u.equipado ?? 'Ninguno', inline: true })
+            .setColor(0x2C2F33);
+        return void msg.reply({ embeds: [embed] });
+    }
+
+    // ==========================================
+    // 🏆 RANKINGS
+    // ==========================================
+    if (cmd === 'ranking') {
+        const tipo = args[0]?.toLowerCase() ?? 'xp';
+        const jugadores = Array.from(db.entries());
+        type RankTipo = 'xp' | 'yenes' | 'dedos' | 'hp';
+
+        const configs: Record<RankTipo, { label: string; color: number; fn: (u: Usuario) => number; fmt: (v: number) => string }> = {
+            xp:     { label: '✨ Top 10 — Experiencia',  color: 0xFFD700, fn: u => u.xp,     fmt: v => `${v.toLocaleString()} XP` },
+            yenes:  { label: '💴 Top 10 — Yenes',        color: 0x00FF88, fn: u => u.y,      fmt: v => `$${v.toLocaleString()}` },
+            dedos:  { label: '☝️ Top 10 — Dedos',        color: 0x8B0000, fn: u => u.dedos,  fmt: v => `${v}/20` },
+            hp:     { label: '❤️ Top 10 — HP Actual',    color: 0xFF4444, fn: u => u.hp,     fmt: v => `${Math.floor(v)} HP` }
+        };
+
+        const cfg = configs[tipo as RankTipo];
+        if (!cfg) return void msg.reply("❌ Tipos válidos: `xp`, `yenes`, `dedos`, `hp`.\nEjemplo: `!ranking xp`");
+
+        const top10 = jugadores
+            .sort((a, b) => cfg.fn(b[1]) - cfg.fn(a[1]))
+            .slice(0, 10);
+
+        const medallas = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+        const desc = top10.map(([, u], i) =>
+            `${medallas[i]} **${u.n}** — ${cfg.fmt(cfg.fn(u))}`
+        ).join('\n') || '_Sin datos aún_';
+
+        const embed = new EmbedBuilder()
+            .setTitle(cfg.label)
+            .setDescription(desc)
+            .setColor(cfg.color)
+            .setFooter({ text: 'Usa !ranking xp | yenes | dedos | hp' });
+        return void msg.reply({ embeds: [embed] });
     }
 
     // ==========================================
     // 🛒 TIENDA
     // ==========================================
     if (cmd === 'tienda') {
+        const errCanal = checkCanal(config.setupTienda, msg.channel.id, 'Tienda');
+        if (errCanal) return void msg.reply(errCanal);
         const embed = new EmbedBuilder()
             .setTitle("🛒 TIENDA DEL MERCADO MALDITO")
-            .setDescription("Usa `!comer_dedo` para comprar Dedos de Sukuna.\nUsa `!comprar [item]` para el resto.")
+            .setDescription("Usa `!comer_dedo` para Dedos de Sukuna.\nUsa `!comprar [item]` para el resto.\nEjemplo: `!comprar gafas maki`")
             .addFields(
-                { name: "☝️ Dedo de Sukuna — $100,000",         value: "```+500 EN y +10% Daño permanentemente```",  inline: false },
-                { name: "⛓️ Gokumonkyō (Pequeño) — $50,000",    value: "```Sella a un usuario por 10 minutos```",    inline: false },
-                { name: "⛓️ Gokumonkyō (Estándar) — $120,000",  value: "```Sella a un usuario por 30 minutos```",   inline: false },
-                { name: "⛓️ Gokumonkyō (Eterno) — $250,000",    value: "```Sella a un usuario por 1 hora```",       inline: false },
-                { name: "🎲 Reroll de Clan — $150,000",          value: "```Usa !comprar_reroll para cambiar clan```",inline: false }
+                { name: "☝️ Dedo de Sukuna — $100,000",         value: "```+500 EN y +10% Daño permanente```",       inline: false },
+                { name: "⛓️ Gokumonkyō (Pequeño) — $50,000",    value: "```Sella usuario 10 minutos```",             inline: false },
+                { name: "⛓️ Gokumonkyō (Estándar) — $120,000",  value: "```Sella usuario 30 minutos```",            inline: false },
+                { name: "⛓️ Gokumonkyō (Eterno) — $250,000",    value: "```Sella usuario 1 hora```",                inline: false },
+                { name: "👓 Gafas de Maki — $80,000",            value: "```Atacar sin clan. +20% daño Bosses```",   inline: false },
+                { name: "☁️ Nube Itinerante — $200,000",         value: "```+50% daño (+75% vs Zenin)```",           inline: false },
+                { name: "🗡️ Lanza Invertida — $150,000",         value: "```El daño ignora la defensa```",           inline: false },
+                { name: "🎲 Reroll de Clan — $150,000",          value: "```!comprar_reroll para cambiar clan```",   inline: false }
             )
             .setColor(0x2C2F33)
             .setFooter({ text: `Tu saldo: $${u.y.toLocaleString()} Yenes` });
-        return msg.reply({ embeds: [embed] });
+        return void msg.reply({ embeds: [embed] });
     }
 
     // ==========================================
     // 🛍️ COMPRAR ITEM
     // ==========================================
     if (cmd === 'comprar') {
+        const errCanal = checkCanal(config.setupTienda, msg.channel.id, 'Tienda');
+        if (errCanal) return void msg.reply(errCanal);
         const itemKey = args.join('_').toLowerCase();
         const item = TIENDA[itemKey];
-        if (!item) return msg.reply("❌ Item no encontrado. Usa `!tienda` para ver los disponibles.");
-        if (itemKey === 'dedo') return msg.reply("☝️ Para comprar dedos usa `!comer_dedo`.");
-        if (u.y < item.precio) return msg.reply(`❌ Necesitas **$${item.precio.toLocaleString()} Yenes**. Tienes $${u.y.toLocaleString()}.`);
+        if (!item) return void msg.reply("❌ Item no encontrado. Usa `!tienda` para ver los disponibles.");
+        if (itemKey === 'dedo') return void msg.reply("☝️ Para comprar dedos usa `!comer_dedo`.");
+        if (u.y < item.precio) return void msg.reply(`❌ Necesitas **$${item.precio.toLocaleString()} Yenes**. Tienes $${u.y.toLocaleString()}.`);
         u.y -= item.precio;
         u.inv.push(item.n);
         guardarDatos();
-        return msg.reply(`✅ Compraste **${item.n}**. Añadido a tu inventario.\n💴 Saldo restante: $${u.y.toLocaleString()}`);
+        return void msg.reply(`✅ Compraste **${item.n}**. Añadido a tu inventario.\n💴 Saldo: $${u.y.toLocaleString()}`);
     }
 
     // ==========================================
@@ -364,26 +543,26 @@ client.on(Events.MessageCreate, async (msg) => {
     // ==========================================
     if (cmd === 'usar_sello') {
         const variante = args[0]?.toLowerCase();
-        const variantesMap = {
+        const variantesMap: Record<string, string> = {
             'pequeño':  'gokumonkyo_pequeño',
             'estandar': 'gokumonkyo_estandar',
             'eterno':   'gokumonkyo_eterno'
         };
-        const itemKey = variantesMap[variante];
-        if (!itemKey) return msg.reply("❌ Variantes disponibles: `pequeño`, `estandar`, `eterno`.");
+        const itemKey = variantesMap[variante ?? ''];
+        if (!itemKey) return void msg.reply("❌ Variantes: `pequeño`, `estandar`, `eterno`.");
 
         const item = TIENDA[itemKey];
-        if (!u.inv.includes(item.n)) return msg.reply(`❌ No tienes **${item.n}** en tu inventario.`);
+        if (!u.inv.includes(item.n)) return void msg.reply(`❌ No tienes **${item.n}** en tu inventario.`);
 
-        const target = msg.mentions.members.first();
-        if (!target) return msg.reply("🎯 Menciona al usuario que deseas sellar.");
+        const target = msg.mentions.members?.first();
+        if (!target) return void msg.reply("🎯 Menciona al usuario que deseas sellar.");
 
         if (!db.has(target.id)) db.set(target.id, usuarioBase(target.user.username));
-        const vU = db.get(target.id);
+        const vU = db.get(target.id)!;
 
-        if (vU.sellado && Date.now() < vU.sellado) return msg.reply("⚠️ Ese usuario ya está dentro del Reino de Prisión.");
+        if (vU.sellado && Date.now() < vU.sellado) return void msg.reply("⚠️ Ese usuario ya está sellado.");
 
-        const rolesSalvados = [];
+        const rolesSalvados: string[] = [];
         if (target.roles.cache.has(ROL_MIEMBRO)) rolesSalvados.push(ROL_MIEMBRO);
         Object.values(CLANES).forEach(c => {
             if (target.roles.cache.has(c.id)) rolesSalvados.push(c.id);
@@ -394,21 +573,21 @@ client.on(Events.MessageCreate, async (msg) => {
                 .filter(r => target.roles.cache.has(r));
             if (rolesAQuitar.length > 0) await target.roles.remove(rolesAQuitar);
             await target.roles.add(ROL_GOKUMONKYO);
-        } catch (e) {
-            return msg.reply("❌ No tengo permisos suficientes para gestionar roles.");
+        } catch {
+            return void msg.reply("❌ No tengo permisos para gestionar roles.");
         }
 
-        vU.sellado = Date.now() + item.duracion;
+        vU.sellado = Date.now() + (item.duracion ?? 0);
         vU.rolesSellado = rolesSalvados;
         db.set(target.id, vU);
         u.inv = u.inv.filter(i => i !== item.n);
         guardarDatos();
 
         const durTexto = variante === 'pequeño' ? '10 minutos' : variante === 'estandar' ? '30 minutos' : '1 hora';
-        msg.channel.send({ embeds: [
+        void msg.channel.send({ embeds: [
             new EmbedBuilder()
                 .setTitle("⛓️ REINO DE PRISIÓN ACTIVADO")
-                .setDescription(`**${target.user.username}** ha sido sellado dentro del Gokumonkyō.\n⏳ Duración: **${durTexto}**\nSus poderes y accesos han sido suspendidos.`)
+                .setDescription(`**${target.user.username}** ha sido sellado.\n⏳ Duración: **${durTexto}**\nSus poderes han sido suspendidos.`)
                 .setColor(0x4B0082)
         ]});
 
@@ -420,10 +599,9 @@ client.on(Events.MessageCreate, async (msg) => {
                 vU.rolesSellado = [];
                 db.set(target.id, vU);
                 guardarDatos();
-                msg.channel.send(`🔓 El sello sobre **${target.user.username}** ha expirado. Sus poderes han sido restaurados.`);
+                void msg.channel.send(`🔓 El sello sobre **${target.user.username}** ha expirado. Sus poderes han sido restaurados.`);
             } catch (e) { console.error("Error restaurando roles:", e); }
-        }, item.duracion);
-
+        }, item.duracion ?? 0);
         return;
     }
 
@@ -432,23 +610,23 @@ client.on(Events.MessageCreate, async (msg) => {
     // ==========================================
     if (cmd === 'equipar') {
         const nombreItem = args.join(' ');
-        if (!u.inv.includes(nombreItem)) return msg.reply(`❌ No tienes **${nombreItem}** en tu inventario.`);
-        if (!EQUIPAMIENTO[nombreItem]) return msg.reply("❌ Ese objeto no es equipable directamente.");
+        if (!u.inv.includes(nombreItem)) return void msg.reply(`❌ No tienes **${nombreItem}** en tu inventario.`);
+        if (!EQUIPAMIENTO[nombreItem]) return void msg.reply("❌ Ese objeto no es equipable.");
         u.equipado = nombreItem;
         guardarDatos();
-        return msg.reply(`✅ Has equipado **${nombreItem}**.\n📋 Efecto: ${EQUIPAMIENTO[nombreItem].desc}`);
+        return void msg.reply(`✅ Has equipado **${nombreItem}**.\n📋 Efecto: ${EQUIPAMIENTO[nombreItem].desc}`);
     }
 
     // ==========================================
     // 🛒 RECOGER ITEM DEL CALLEJÓN
     // ==========================================
     if (cmd === 'recoger') {
-        if (!config.itemCallejonActual) return msg.reply("🕳️ No hay ningún objeto disponible en el callejón ahora mismo.");
-        if (Date.now() > config.itemCallejonExpira) {
+        if (!config.itemCallejonActual) return void msg.reply("🕳️ No hay ningún objeto en el callejón ahora mismo.");
+        if (Date.now() > (config.itemCallejonExpira ?? 0)) {
             config.itemCallejonActual = null;
             config.itemCallejonExpira = null;
             guardarConfig();
-            return msg.reply("⌛ El objeto ya expiró. Espera el próximo spawn.");
+            return void msg.reply("⌛ El objeto ya expiró. Espera el próximo spawn.");
         }
         const itemRecogido = config.itemCallejonActual;
         u.inv.push(itemRecogido);
@@ -457,7 +635,63 @@ client.on(Events.MessageCreate, async (msg) => {
         config.itemCallejonExpira = null;
         guardarConfig();
         guardarDatos();
-        return msg.reply(`🎁 ¡Recogiste **${itemRecogido}**! Fue añadido a tu inventario.`);
+        return void msg.reply(`🎁 ¡Recogiste **${itemRecogido}**! Añadido a tu inventario.`);
+    }
+
+    // ==========================================
+    // ⚔️ EXORCIZAR BOSS ACTIVO
+    // ==========================================
+    if (cmd === 'exorcizar') {
+        const boss = bossesActivos.get(msg.channel.id);
+        if (!boss) return void msg.reply("🕊️ No hay ninguna maldición activa en este canal.");
+
+        if (u.sellado && Date.now() < u.sellado) {
+            return void msg.reply("⛓️ Estás sellado. No puedes exorcizar.");
+        }
+
+        const costExorcizar = 30;
+        if (u.en < costExorcizar) return void msg.reply("🪫 Sin Energía Maldita para exorcizar.");
+
+        const equip = u.equipado ? EQUIPAMIENTO[u.equipado] : null;
+        let dano = Math.ceil(100 * gU.dmgM * (1 + u.dedos * 0.10));
+
+        if (equip?.dmgBossBonus) dano = Math.ceil(dano * equip.dmgBossBonus);
+        if (u.tieneBrazo) dano *= 3;
+
+        u.en -= costExorcizar;
+        boss.hpActual -= dano;
+
+        if (boss.hpActual <= 0) {
+            bossesActivos.delete(msg.channel.id);
+            u.y += boss.s.y;
+            u.xp += boss.s.xp;
+            guardarDatos();
+
+            if (u.dedos >= 20) {
+                try { await msg.member.roles.add(ROL_REY_MALDICIONES); } catch { }
+            }
+
+            const embed = new EmbedBuilder()
+                .setTitle("💀 ¡MALDICIÓN EXORCIZADA!")
+                .setDescription(
+                    `**${u.n}** eliminó a **${boss.s.n}**.\n` +
+                    `💥 Golpe final: **${dano.toLocaleString()}**\n` +
+                    `💴 Recompensa: **$${boss.s.y.toLocaleString()}**\n` +
+                    `✨ XP ganada: **+${boss.s.xp.toLocaleString()}**`
+                )
+                .setColor(0x00FF88);
+            return void msg.reply({ embeds: [embed] });
+        }
+
+        guardarDatos();
+        const embed = new EmbedBuilder()
+            .setTitle(`⚔️ Ataque a ${boss.s.n}`)
+            .setDescription(
+                `**${u.n}** causó **${dano.toLocaleString()}** de daño.\n` +
+                `❤️ HP restante: **${boss.hpActual.toLocaleString()}**`
+            )
+            .setColor(0xFF6600);
+        return void msg.reply({ embeds: [embed] });
     }
 
     // ==========================================
@@ -468,13 +702,13 @@ client.on(Events.MessageCreate, async (msg) => {
         const tiempoEspera = cooldown - (Date.now() - (u.meditarCooldown || 0));
         if (tiempoEspera > 0) {
             const restante = Math.ceil(tiempoEspera / 60000);
-            return msg.reply(`⏳ Debes esperar **${restante} minuto(s)** para meditar de nuevo.`);
+            return void msg.reply(`⏳ Debes esperar **${restante} minuto(s)** para meditar.`);
         }
         const maxEn = gU.enBase + (u.dedos * 500);
         u.en = Math.min(maxEn, u.en + 100);
         u.meditarCooldown = Date.now();
         guardarDatos();
-        return msg.reply(`🧘 Has meditado en silencio. Recuperaste **+100 de Energía Maldita**.`);
+        return void msg.reply(`🧘 Has meditado. Recuperaste **+100 de Energía Maldita**.`);
     }
 
     // ==========================================
@@ -482,15 +716,15 @@ client.on(Events.MessageCreate, async (msg) => {
     // ==========================================
     if (cmd === 'pactar') {
         const target = msg.mentions.users.first();
-        if (!target) return msg.reply("🎯 Menciona al usuario con quien deseas pactar.");
-        if (target.id === uid) return msg.reply("❌ No puedes pactarte contigo mismo.");
+        if (!target) return void msg.reply("🎯 Menciona al usuario con quien pactar.");
+        if (target.id === uid) return void msg.reply("❌ No puedes pactarte contigo mismo.");
         if (!db.has(target.id)) db.set(target.id, usuarioBase(target.username));
-        const vU = db.get(target.id);
+        const vU = db.get(target.id)!;
         u.pactadoCon = target.id;
         vU.pactadoCon = uid;
         db.set(target.id, vU);
         guardarDatos();
-        return msg.reply(`🤝 Pacto establecido con **${target.username}**. Sus HP se combinarán en la próxima batalla.`);
+        return void msg.reply(`🤝 Pacto establecido con **${target.username}**.`);
     }
 
     // ==========================================
@@ -498,79 +732,354 @@ client.on(Events.MessageCreate, async (msg) => {
     // ==========================================
     if (cmd === 'comprar_reroll') {
         const costo = 150000;
-        if (u.y < costo) return msg.reply(`❌ Necesitas **$${costo.toLocaleString()} Yenes** para el reroll.`);
+        if (u.y < costo) return void msg.reply(`❌ Necesitas **$${costo.toLocaleString()} Yenes**.`);
         const clanesIds = Object.values(CLANES).map(c => c.id);
-        const clanActual = clanesIds.find(id => msg.member.roles.cache.has(id));
+        const clanActual = clanesIds.find(id => msg.member!.roles.cache.has(id));
         try {
-            if (clanActual) await msg.member.roles.remove(clanActual);
+            if (clanActual) await msg.member!.roles.remove(clanActual);
             const nuevoClanId = clanesIds[Math.floor(Math.random() * clanesIds.length)];
-            await msg.member.roles.add(nuevoClanId);
+            await msg.member!.roles.add(nuevoClanId);
             u.y -= costo;
             guardarDatos();
-            const nuevoClan = Object.values(CLANES).find(c => c.id === nuevoClanId);
-            return msg.reply(`🎲 Tu linaje ha cambiado.\nNuevo clan: **${nuevoClan.n}** ${nuevoClan.emoji}`);
-        } catch (e) {
-            return msg.reply("❌ No tengo permisos para gestionar roles.");
+            const nuevoClan = Object.values(CLANES).find(c => c.id === nuevoClanId)!;
+            return void msg.reply(`🎲 Nuevo clan: **${nuevoClan.n}** ${nuevoClan.emoji}`);
+        } catch {
+            return void msg.reply("❌ No tengo permisos para gestionar roles.");
         }
     }
 
     // ==========================================
-    // 🛠️ COMANDOS DE DIOS (ADMINISTRADORES)
+    // 🛠️ COMANDOS DE DIOS (ADMINS)
     // ==========================================
     const esAdmin = msg.member.permissions.has('Administrator');
 
     if (cmd === 'setup_maldiciones') {
-        if (!esAdmin) return msg.reply("❌ Solo administradores.");
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
         config.setupMaldiciones = msg.channel.id;
         guardarConfig();
-        return msg.reply(`✅ Canal de spawn de maldiciones: <#${msg.channel.id}>`);
+        return void msg.reply(`✅ Canal de spawn de maldiciones: <#${msg.channel.id}>`);
     }
 
     if (cmd === 'setup_callejon') {
-        if (!esAdmin) return msg.reply("❌ Solo administradores.");
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
         config.setupCallejon = msg.channel.id;
         guardarConfig();
-        return msg.reply(`✅ Canal del callejón configurado: <#${msg.channel.id}>`);
+        return void msg.reply(`✅ Canal del callejón: <#${msg.channel.id}>`);
+    }
+
+    if (cmd === 'setup_trabajo') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        config.setupTrabajo = msg.channel.id;
+        guardarConfig();
+        return void msg.reply(`✅ Canal de trabajo asignado: <#${msg.channel.id}>\nSolo se podrá usar \`!trabajar\` aquí.`);
+    }
+
+    if (cmd === 'setup_combate') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        config.setupCombate = msg.channel.id;
+        guardarConfig();
+        return void msg.reply(`✅ Canal de combate asignado: <#${msg.channel.id}>\nSolo se podrán usar técnicas aquí.`);
+    }
+
+    if (cmd === 'setup_tienda') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        config.setupTienda = msg.channel.id;
+        guardarConfig();
+        return void msg.reply(`✅ Canal de tienda asignado: <#${msg.channel.id}>\n\`!tienda\` y \`!comprar\` solo funcionarán aquí.`);
+    }
+
+    if (cmd === 'setup_perfil') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        config.setupPerfil = msg.channel.id;
+        guardarConfig();
+        return void msg.reply(`✅ Canal de perfil asignado: <#${msg.channel.id}>\n\`!perfil\`, \`!inventario\` y \`!ranking\` solo funcionarán aquí.`);
+    }
+
+    if (cmd === 'quitar_canal') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const zona = args[0]?.toLowerCase();
+        const zonas: Record<string, keyof Config> = {
+            'trabajo':    'setupTrabajo',
+            'combate':    'setupCombate',
+            'tienda':     'setupTienda',
+            'perfil':     'setupPerfil',
+            'maldiciones':'setupMaldiciones',
+            'callejon':   'setupCallejon',
+        };
+        const clave = zonas[zona ?? ''];
+        if (!clave) return void msg.reply("❌ Zonas válidas: `trabajo`, `combate`, `tienda`, `perfil`, `maldiciones`, `callejon`.");
+        (config as unknown as Record<string, unknown>)[clave] = null;
+        guardarConfig();
+        return void msg.reply(`✅ Restricción de canal para **${zona}** eliminada. El comando funcionará en cualquier canal.`);
+    }
+
+    if (cmd === 'ver_canales') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const fmt = (v: string | null) => v ? `<#${v}>` : '_(sin restricción)_';
+        const embed = new EmbedBuilder()
+            .setTitle("📋 CANALES CONFIGURADOS")
+            .addFields(
+                { name: '👾 Spawn Maldiciones', value: fmt(config.setupMaldiciones), inline: true },
+                { name: '🎁 Callejón',           value: fmt(config.setupCallejon),   inline: true },
+                { name: '💼 Trabajo',             value: fmt(config.setupTrabajo),    inline: true },
+                { name: '⚔️ Combate',             value: fmt(config.setupCombate),    inline: true },
+                { name: '🛒 Tienda',              value: fmt(config.setupTienda),     inline: true },
+                { name: '📋 Perfil/Ranking',      value: fmt(config.setupPerfil),     inline: true },
+            )
+            .setColor(0x2C2F33)
+            .setFooter({ text: 'Usa !quitar_canal [zona] para eliminar una restricción.' });
+        return void msg.reply({ embeds: [embed] });
     }
 
     if (cmd === 'quitar_objeto') {
-        if (!esAdmin) return msg.reply("❌ Solo administradores.");
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
         const target = msg.mentions.users.first();
-        if (!target) return msg.reply("Uso: `!quitar_objeto @usuario [nombre del objeto]`");
+        if (!target) return void msg.reply("Uso: `!quitar_objeto @usuario [nombre del objeto]`");
         const nombreItem = args.slice(1).join(' ');
-        if (!db.has(target.id)) return msg.reply("Usuario no encontrado en la base de datos.");
-        const vU = db.get(target.id);
-        if (!vU.inv.includes(nombreItem)) return msg.reply(`❌ **${target.username}** no tiene **${nombreItem}**.`);
+        if (!db.has(target.id)) return void msg.reply("Usuario no encontrado.");
+        const vU = db.get(target.id)!;
+        if (!vU.inv.includes(nombreItem)) return void msg.reply(`❌ **${target.username}** no tiene **${nombreItem}**.`);
         vU.inv = vU.inv.filter(i => i !== nombreItem);
         db.set(target.id, vU);
         guardarDatos();
-        return msg.reply(`✅ Se eliminó **${nombreItem}** del inventario de **${target.username}**.`);
+        return void msg.reply(`✅ Se eliminó **${nombreItem}** del inventario de **${target.username}**.`);
     }
 
     if (cmd === 'add_yenes') {
-        if (!esAdmin) return msg.reply("❌ Solo administradores.");
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
         const target = msg.mentions.users.first();
-        const cantidad = parseInt(args[1]);
-        if (!target || isNaN(cantidad)) return msg.reply("Uso: `!add_yenes @usuario [cantidad]`");
+        const cantidad = parseInt(args[1] ?? '');
+        if (!target || isNaN(cantidad)) return void msg.reply("Uso: `!add_yenes @usuario [cantidad]`");
         if (!db.has(target.id)) db.set(target.id, usuarioBase(target.username));
-        const vU = db.get(target.id);
+        const vU = db.get(target.id)!;
         vU.y += cantidad;
         db.set(target.id, vU);
         guardarDatos();
-        return msg.reply(`✅ Se añadieron **$${cantidad.toLocaleString()}** a **${target.username}**.`);
+        return void msg.reply(`✅ +$${cantidad.toLocaleString()} a **${target.username}**.`);
+    }
+
+    if (cmd === 'remove_yenes') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const target = msg.mentions.users.first();
+        const cantidad = parseInt(args[1] ?? '');
+        if (!target || isNaN(cantidad)) return void msg.reply("Uso: `!remove_yenes @usuario [cantidad]`");
+        if (!db.has(target.id)) return void msg.reply("Usuario no encontrado.");
+        const vU = db.get(target.id)!;
+        vU.y = Math.max(0, vU.y - cantidad);
+        db.set(target.id, vU);
+        guardarDatos();
+        return void msg.reply(`✅ -$${cantidad.toLocaleString()} a **${target.username}**.`);
     }
 
     if (cmd === 'add_xp') {
-        if (!esAdmin) return msg.reply("❌ Solo administradores.");
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
         const target = msg.mentions.users.first();
-        const cantidad = parseInt(args[1]);
-        if (!target || isNaN(cantidad)) return msg.reply("Uso: `!add_xp @usuario [cantidad]`");
+        const cantidad = parseInt(args[1] ?? '');
+        if (!target || isNaN(cantidad)) return void msg.reply("Uso: `!add_xp @usuario [cantidad]`");
         if (!db.has(target.id)) db.set(target.id, usuarioBase(target.username));
-        const vU = db.get(target.id);
+        const vU = db.get(target.id)!;
         vU.xp += cantidad;
         db.set(target.id, vU);
         guardarDatos();
-        return msg.reply(`✅ Se añadieron **${cantidad.toLocaleString()} XP** a **${target.username}**.`);
+        return void msg.reply(`✅ +${cantidad.toLocaleString()} XP a **${target.username}**.`);
+    }
+
+    if (cmd === 'remove_xp') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const target = msg.mentions.users.first();
+        const cantidad = parseInt(args[1] ?? '');
+        if (!target || isNaN(cantidad)) return void msg.reply("Uso: `!remove_xp @usuario [cantidad]`");
+        if (!db.has(target.id)) return void msg.reply("Usuario no encontrado.");
+        const vU = db.get(target.id)!;
+        vU.xp = Math.max(0, vU.xp - cantidad);
+        db.set(target.id, vU);
+        guardarDatos();
+        return void msg.reply(`✅ -${cantidad.toLocaleString()} XP a **${target.username}**.`);
+    }
+
+    if (cmd === 'quitar_sellado') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const target = msg.mentions.members?.first();
+        if (!target) return void msg.reply("Uso: `!quitar_sellado @usuario`");
+        if (!db.has(target.id)) return void msg.reply("Usuario no encontrado.");
+        const vU = db.get(target.id)!;
+        try {
+            if (target.roles.cache.has(ROL_GOKUMONKYO)) await target.roles.remove(ROL_GOKUMONKYO);
+            if (vU.rolesSellado.length > 0) await target.roles.add(vU.rolesSellado);
+        } catch { }
+        vU.sellado = null;
+        vU.rolesSellado = [];
+        db.set(target.id, vU);
+        guardarDatos();
+        return void msg.reply(`✅ Sello eliminado de **${target.user.username}**.`);
+    }
+
+    if (cmd === 'set_hp') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const target = msg.mentions.users.first();
+        const valor = parseInt(args[1] ?? '');
+        if (!target || isNaN(valor)) return void msg.reply("Uso: `!set_hp @usuario [valor]`");
+        if (!db.has(target.id)) db.set(target.id, usuarioBase(target.username));
+        const vU = db.get(target.id)!;
+        const gV = getGrado(vU.xp);
+        const maxHp = gV.hpBase + (vU.dedos * 100);
+        vU.hp = Math.max(0, Math.min(maxHp, valor));
+        db.set(target.id, vU);
+        guardarDatos();
+        return void msg.reply(`✅ HP de **${target.username}** ajustado a **${vU.hp}/${maxHp}**.`);
+    }
+
+    if (cmd === 'reiniciar') {
+        if (!esAdmin) return void msg.reply("❌ Solo administradores.");
+        const target = msg.mentions.users.first();
+        if (!target) return void msg.reply("Uso: `!reiniciar @usuario`");
+        db.set(target.id, usuarioBase(target.username));
+        guardarDatos();
+        return void msg.reply(`✅ Datos de **${target.username}** reiniciados a valores iniciales.`);
+    }
+
+    // ==========================================
+    // ❓ AYUDA
+    // ==========================================
+    if (cmd === 'ayuda' || cmd === 'comandos' || cmd === 'help') {
+        const embed = new EmbedBuilder()
+            .setTitle("📖 GUÍA DE COMANDOS — SHINJUKU SHOWDOWN")
+            .setColor(0x2C2F33)
+            .addFields(
+                { name: "👤 Perfil & Progreso", value:
+                    "`!perfil` — Tu ficha\n`!inventario` — Tus objetos\n`!clan` — Info de tu clan\n`!ranking xp|yenes|dedos|hp` — Top 10",
+                    inline: false },
+                { name: "⚔️ Combate", value:
+                    "`![técnica] @usuario` — Atacar\n`!exorcizar` — Atacar boss activo\n`!maldiciones` — Bosses activos\n`!meditar` — Recuperar energía (1x/2h)",
+                    inline: false },
+                { name: "💰 Economía", value:
+                    "`!trabajar` — Ganar yenes (1x/1h)\n`!donar @usuario [cantidad]` — Transferir yenes\n`!tienda` — Ver tienda\n`!comprar [item]` — Comprar ítem\n`!comer_dedo` — Comprar dedo ($100k)\n`!comprar_reroll` — Cambiar clan ($150k)",
+                    inline: false },
+                { name: "🎒 Inventario & Equipamiento", value:
+                    "`!equipar [nombre]` — Equipar objeto\n`!recoger` — Recoger ítem del callejón\n`!usar_sello pequeño|estandar|eterno @usuario` — Sellar",
+                    inline: false },
+                { name: "🤝 Social", value:
+                    "`!pactar @usuario` — Formar pacto",
+                    inline: false },
+                { name: "🛠️ Admin", value:
+                    "`!setup_maldiciones` · `!setup_callejon`\n`!add_xp/yenes @user [n]` · `!remove_xp/yenes @user [n]`\n`!set_hp @user [valor]` · `!quitar_objeto @user [item]`\n`!quitar_sellado @user` · `!reiniciar @user`",
+                    inline: false }
+            )
+            .setFooter({ text: "Usa las técnicas de tu clan. 120 técnicas disponibles." });
+        return void msg.reply({ embeds: [embed] });
+    }
+
+    // ==========================================
+    // 🏛️ CLAN INFO
+    // ==========================================
+    if (cmd === 'clan') {
+        const clanEntry = Object.values(CLANES).find(c => msg.member!.roles.cache.has(c.id));
+        if (!clanEntry) return void msg.reply("❌ No perteneces a ningún clan. Un admin debe asignarte uno.");
+
+        const miembrosDelClan = msg.guild!.members.cache.filter(m => m.roles.cache.has(clanEntry.id));
+        const tecnnicasClan = Object.entries(TECNICAS).filter(([, t]) => t.clan === clanEntry.id);
+        const tecnicasLista = tecnnicasClan.slice(0, 8).map(([cmd]) => `\`${cmd}\``).join(', ') +
+            (tecnnicasClan.length > 8 ? ` y ${tecnnicasClan.length - 8} más...` : '');
+
+        const embed = new EmbedBuilder()
+            .setTitle(`${clanEntry.emoji} CLAN ${clanEntry.n.toUpperCase()}`)
+            .addFields(
+                { name: '👥 Miembros',     value: `${miembrosDelClan.size}`,  inline: true },
+                { name: '⚔️ Técnicas',     value: `${tecnnicasClan.length}`,  inline: true },
+                { name: '📋 Comandos',     value: tecnicasLista,              inline: false }
+            )
+            .setColor(0x2C2F33);
+        return void msg.reply({ embeds: [embed] });
+    }
+
+    // ==========================================
+    // 👾 MALDICIONES ACTIVAS
+    // ==========================================
+    if (cmd === 'maldiciones') {
+        if (bossesActivos.size === 0) return void msg.reply("🕊️ No hay maldiciones activas en ningún canal ahora mismo.");
+        const lista = Array.from(bossesActivos.entries()).map(([chanId, boss]) =>
+            `📍 <#${chanId}> — **${boss.s.n}** ❤️ ${boss.hpActual.toLocaleString()} HP`
+        ).join('\n');
+        const embed = new EmbedBuilder()
+            .setTitle("👾 MALDICIONES ACTIVAS")
+            .setDescription(lista)
+            .setColor(0xFF0000)
+            .setFooter({ text: "Usa !exorcizar en el canal correspondiente." });
+        return void msg.reply({ embeds: [embed] });
+    }
+
+    // ==========================================
+    // 💼 TRABAJAR
+    // ==========================================
+    if (cmd === 'trabajar') {
+        const errCanal = checkCanal(config.setupTrabajo, msg.channel.id, 'Trabajo');
+        if (errCanal) return void msg.reply(errCanal);
+        const cooldown = 60 * 60 * 1000;
+        const lastTrabajo = u.trabajarCooldown ?? 0;
+        if (Date.now() - lastTrabajo < cooldown) {
+            const restante = Math.ceil((cooldown - (Date.now() - lastTrabajo)) / 60000);
+            return void msg.reply(`⏳ Debes esperar **${restante} minuto(s)** para volver a trabajar.`);
+        }
+        const trabajos = [
+            { desc: "Patrullaste el barrio de Shinjuku",  yenes: 500  },
+            { desc: "Exorcizaste fantasmas menores",       yenes: 1200 },
+            { desc: "Completaste una misión de Grado 4",   yenes: 2500 },
+            { desc: "Entrenaste en el Colegio Jujutsu",    yenes: 800  },
+            { desc: "Investigaste una maldición errante",  yenes: 3000 },
+            { desc: "Vendiste objetos malditos",           yenes: 4500 },
+            { desc: "Completaste una misión especial",     yenes: 6000 },
+        ];
+        const trabajo = trabajos[Math.floor(Math.random() * trabajos.length)];
+        u.y += trabajo.yenes;
+        u.trabajarCooldown = Date.now();
+        guardarDatos();
+        const embed = new EmbedBuilder()
+            .setTitle("💼 ¡MISIÓN COMPLETADA!")
+            .setDescription(`${trabajo.desc}.\n💴 Ganaste: **$${trabajo.yenes.toLocaleString()} Yenes**\n💴 Saldo: **$${u.y.toLocaleString()}**`)
+            .setColor(0x00CC88);
+        return void msg.reply({ embeds: [embed] });
+    }
+
+    // ==========================================
+    // 💸 DONAR YENES
+    // ==========================================
+    if (cmd === 'donar') {
+        const target = msg.mentions.users.first();
+        const cantidad = parseInt(args[1] ?? '');
+        if (!target || isNaN(cantidad) || cantidad <= 0) return void msg.reply("Uso: `!donar @usuario [cantidad]`");
+        if (target.id === uid) return void msg.reply("❌ No puedes donarte a ti mismo.");
+        if (u.y < cantidad) return void msg.reply(`❌ No tienes suficientes yenes. Tienes $${u.y.toLocaleString()}.`);
+        if (!db.has(target.id)) db.set(target.id, usuarioBase(target.username));
+        const vU = db.get(target.id)!;
+        u.y -= cantidad;
+        vU.y += cantidad;
+        db.set(target.id, vU);
+        guardarDatos();
+        return void msg.reply(`💸 Donaste **$${cantidad.toLocaleString()} Yenes** a **${target.username}**.\n💴 Tu saldo: $${u.y.toLocaleString()}`);
+    }
+
+    // ==========================================
+    // ☝️ COMER DEDO
+    // ==========================================
+    if (cmd === 'comer_dedo') {
+        const precioDedo = 100000;
+        if (u.y < precioDedo) return void msg.reply(`❌ Cuesta $${precioDedo.toLocaleString()} Yenes.`);
+        if (u.dedos >= 20) return void msg.reply("⚠️ Has alcanzado el límite de 20 recipientes.");
+
+        u.y -= precioDedo;
+        u.dedos++;
+        u.xp += 15000;
+
+        if (u.dedos >= 20) {
+            const msg20 = u.tieneBrazo
+                ? `👑 **¡RELIQUIA DE SUKUNA COMPLETA!** **${u.n}** reunió los 20 dedos. ¡Daño x3 activo!`
+                : `👑 **¡20 DEDOS ACUMULADOS!** **${u.n}** ha reunido los 20 dedos de Sukuna.`;
+            void msg.channel.send(msg20);
+            try { await msg.member.roles.add(ROL_REY_MALDICIONES); } catch (e) { console.error("Error rol:", e); }
+        }
+
+        guardarDatos();
+        return void msg.reply(`☝️ Asimilaste el dedo **${u.dedos}/20**. Tus estadísticas aumentan.`);
     }
 
     // ==========================================
@@ -578,40 +1087,80 @@ client.on(Events.MessageCreate, async (msg) => {
     // ==========================================
     const tech = TECNICAS[`!${cmd}`];
     if (tech) {
+        const errCanal = checkCanal(config.setupCombate, msg.channel.id, 'Combate');
+        if (errCanal) return void msg.reply(errCanal);
 
         if (u.sellado && Date.now() < u.sellado) {
-            return msg.reply("⛓️ Estás sellado. No puedes usar técnicas hasta que el Velo se levante.");
+            return void msg.reply("⛓️ Estás sellado. No puedes usar técnicas.");
         }
 
         const equip = u.equipado ? EQUIPAMIENTO[u.equipado] : null;
 
         if (tech.clan && !msg.member.roles.cache.has(tech.clan) && !equip?.sinClan) {
-            return msg.reply("❌ Tu linaje no permite usar esta técnica.");
+            return void msg.reply("❌ Tu linaje no permite usar esta técnica.");
         }
 
         const reqGrado = GRADOS.find(g => g.n === tech.g);
-        if (u.xp < reqGrado.xp) return msg.reply(`❌ Requieres el rango de **${tech.g}**.`);
+        if (!reqGrado || u.xp < reqGrado.xp) return void msg.reply(`❌ Requieres el rango de **${tech.g}**.`);
 
-        const target = msg.mentions.users.first();
-        if (!target) return msg.reply("🎯 Menciona a tu oponente.");
+        const costoEnergia = Math.ceil(tech.c * costoMultiplicador);
+        if (u.en < costoEnergia) return void msg.reply("🪫 Sin Energía Maldita.");
 
-        if (!db.has(target.id)) db.set(target.id, usuarioBase(target.username));
-        const v = db.get(target.id);
+        // --- ✅ TÉCNICA DE CURACIÓN (RCT / d negativo) ---
+        if (tech.d < 0) {
+            const maxHp = gU.hpBase + (u.dedos * 100);
+            const curacion = Math.ceil(Math.abs(tech.d) * gU.dmgM);
+            u.hp = Math.min(maxHp, u.hp + curacion);
+            u.en -= costoEnergia;
+            guardarDatos();
+            const embed = new EmbedBuilder()
+                .setTitle(`💚 ${tech.n}`)
+                .setDescription(
+                    `**${u.n}** invirtió su Energía Maldita.\n` +
+                    `💚 Curación: **+${curacion.toLocaleString()} HP**\n` +
+                    `❤️ HP: **${Math.ceil(u.hp).toLocaleString()}/${maxHp.toLocaleString()}**\n` +
+                    `⚡ Consumo: **${costoEnergia} EN**`
+                )
+                .setColor(0x00FF88);
+            if (tech.gif) embed.setImage(tech.gif);
+            return void msg.reply({ embeds: [embed] });
+        }
+
+        // --- 🛡️ TÉCNICA DEFENSIVA/BUFF (sin objetivo) ---
+        if (tech.def || tech.buff) {
+            u.en -= costoEnergia;
+            guardarDatos();
+            const color = tech.buff ? 0xFFD700 : 0x4169E1;
+            const tipo = tech.buff ? '✨ PODER ACTIVADO' : '🛡️ DEFENSA ACTIVADA';
+            const embed = new EmbedBuilder()
+                .setTitle(`${tipo}: ${tech.n}`)
+                .setDescription(
+                    `**${u.n}** activó **${tech.n}**.\n` +
+                    `⚡ Consumo: **${costoEnergia} EN**\n` +
+                    `⚡ Energía restante: **${Math.floor(u.en)}**`
+                )
+                .setColor(color);
+            if (tech.gif) embed.setImage(tech.gif);
+            return void msg.reply({ embeds: [embed] });
+        }
+
+        // --- ⚔️ TÉCNICA DE ATAQUE ---
+        const targetUser = msg.mentions.users.first();
+        if (!targetUser) return void msg.reply("🎯 Menciona a tu oponente.");
+        if (!db.has(targetUser.id)) db.set(targetUser.id, usuarioBase(targetUser.username));
+        const v = db.get(targetUser.id)!;
         const gV = getGrado(v.xp);
 
         if (v.sellado && Date.now() < v.sellado) {
-            return msg.reply("🛡️ No puedes atacar a este usuario, está dentro del Reino de Prisión.");
+            return void msg.reply("🛡️ Ese usuario está dentro del Reino de Prisión.");
         }
-
-        let costoEnergia = Math.ceil(tech.c * costoMultiplicador);
-        if (u.en < costoEnergia) return msg.reply("🪫 Te has quedado sin Energía Maldita.");
 
         // --- CHOQUE DE DOMINIOS ---
         if (tech.dom) {
             const tiempoActual = Date.now();
             if (tiempoActual - v.lastDom < 10000) {
                 const ganador = u.xp >= v.xp ? u : v;
-                msg.channel.send(`🌌 **¡CHOQUE DE DOMINIOS!**\nLos dominios colapsan. El dominio de **${ganador.n}** se sobrepone gracias a su refinamiento (XP superior).`);
+                void msg.channel.send(`🌌 **¡CHOQUE DE DOMINIOS!** El dominio de **${ganador.n}** se sobrepone.`);
                 if (ganador === v) {
                     u.en -= costoEnergia;
                     guardarDatos();
@@ -626,23 +1175,18 @@ client.on(Events.MessageCreate, async (msg) => {
         // --- BUFFS DE EQUIPAMIENTO ---
         if (equip) {
             if (u.equipado === 'Nube Itinerante') {
-                const targetMember = msg.guild.members.cache.get(target.id);
-                const esZenin = targetMember?.roles.cache.has(CLANES.ZENIN.id);
-                danoFinal *= esZenin ? equip.dmgZeninBonus : equip.dmgBonus;
+                const targetMember = msg.guild?.members.cache.get(targetUser.id);
+                const esZenin = targetMember?.roles.cache.has(CLANES.ZENIN.id) ?? false;
+                danoFinal *= esZenin ? (equip.dmgZeninBonus ?? 1) : (equip.dmgBonus ?? 1);
             }
-            if (u.equipado === 'Gafas de Maki') {
-                danoFinal *= equip.dmgBossBonus;
-            }
+            if (u.equipado === 'Gafas de Maki') danoFinal *= equip.dmgBossBonus ?? 1;
         }
 
-        // --- BRAZO DE SUKUNA: daño x3 ---
-        if (u.tieneBrazo) {
-            danoFinal *= 3;
-        }
+        if (u.tieneBrazo) danoFinal *= 3;
 
-        // --- PACTO: daño compartido al aliado del objetivo ---
+        // --- PACTO: daño compartido ---
         if (v.pactadoCon && db.has(v.pactadoCon)) {
-            const pactadoU = db.get(v.pactadoCon);
+            const pactadoU = db.get(v.pactadoCon)!;
             pactadoU.hp -= Math.ceil(danoFinal / 2);
             db.set(v.pactadoCon, pactadoU);
         }
@@ -653,78 +1197,120 @@ client.on(Events.MessageCreate, async (msg) => {
         let resCombate = "";
         if (v.hp <= 0) {
             v.hp = gV.hpBase + (v.dedos * 100);
-            let premio = 25000 * gU.dmgM;
+            const premio = 25000 * gU.dmgM;
             u.y += premio;
             u.xp += 5000;
-            resCombate = `\n💀 **¡EXORCIZADO!**\nPremio: **$${premio.toLocaleString()}** | **+5000 XP**`;
+            resCombate = `\n💀 **¡EXORCIZADO!** Premio: **$${premio.toLocaleString()}** | **+5000 XP**`;
         }
 
         if (u.dedos >= 20) {
-            try { await msg.member.roles.add(ROL_REY_MALDICIONES); } catch (e) {}
+            try { await msg.member.roles.add(ROL_REY_MALDICIONES); } catch { }
         }
 
         guardarDatos();
 
         const bEmbed = new EmbedBuilder()
             .setTitle(tech.n)
-            .setDescription(`**${u.n}** atacó a **${target.username}**.\n💥 Daño: **${Math.ceil(danoFinal).toLocaleString()}**\n⚡ Consumo: **${costoEnergia} EN**${resCombate}`)
+            .setDescription(
+                `**${u.n}** atacó a **${targetUser.username}**.\n` +
+                `💥 Daño: **${Math.ceil(danoFinal).toLocaleString()}**\n` +
+                `⚡ Consumo: **${costoEnergia} EN**${resCombate}`
+            )
             .setColor(v.hp < 100 ? 0x000000 : 0xFF0000);
 
         if (tech.gif) bEmbed.setImage(tech.gif);
-        if (costoMultiplicador < 1) bEmbed.setFooter({ text: "👁️ Seis Ojos: Reducción masiva de coste activada." });
+        if (costoMultiplicador < 1) bEmbed.setFooter({ text: "👁️ Seis Ojos activos." });
 
-        return msg.reply({ embeds: [bEmbed] });
+        return void msg.reply({ embeds: [bEmbed] });
     }
+});
 
-    // ==========================================
-    // 🤚 COMER DEDO 
-    // ==========================================
-        if (cmd === 'comer_dedo') {
-            const precioDedo = 100000;
-            if (u.y < precioDedo) return msg.reply(`❌ Cuesta $${precioDedo.toLocaleString()} Yenes.`);
-            if (u.dedos >= 20) return msg.reply("⚠️ Has alcanzado el límite de 20 recipientes.");
+// ==========================================
+// 🚀 CARGA DE DATOS AL INICIO (ANTES DE READY)
+// ==========================================
+cargarDatos();
 
-            u.y -= precioDedo;
-            u.dedos++;
-            u.xp += 15000;
+// ==========================================
+// ⏰ REGEN PASIVA (cada 60 segundos)
+// ==========================================
+setInterval(() => {
+    db.forEach((u) => {
+        const gU = getGrado(u.xp);
+        const maxHp = gU.hpBase + (u.dedos * 100);
+        const maxEn = gU.enBase + (u.dedos * 500);
+        const regenEN = u.tieneBrazo ? 2 : 1;
+        if (u.hp < maxHp) u.hp = Math.min(maxHp, u.hp + 10);
+        if (u.en < maxEn) u.en = Math.min(maxEn, u.en + (5 * regenEN));
+    });
+    guardarDatos();
+}, 60000);
 
-            if (u.dedos >= 20) {
-                let mensajeSukuna = `👑 **¡20 DEDOS ACUMULADOS!** **${u.n}** ha reunido los 20 dedos de Sukuna.`;
-                if (u.tieneBrazo) mensajeSukuna = `👑 **¡RELIQUIA DE SUKUNA COMPLETA!** **${u.n}** ha reunido los 20 dedos, ¡el daño se multiplica x3!`;
+// ==========================================
+// 🚀 ARRANQUE
+// ==========================================
+client.once('ready', (c) => {
+    console.log("-----------------------------------------");
+    console.log("🏯 SHINJUKU ETERNITY ENGINE v10.0: ONLINE");
+    console.log(`🤖 Sesión iniciada como: ${c.user.tag}`);
+    console.log("-----------------------------------------");
 
-                msg.channel.send(mensajeSukuna);
-                try { await msg.member.roles.add(ROL_REY_MALDICIONES); } catch (e) { console.error("Error rol:", e); }
-            }
-
-            guardarDatos();
-            return msg.reply(`☝️ Asimilaste el dedo **${u.dedos}/20**. Tus estadísticas aumentan permanentemente.`);
-        }
-    }); // <--- ESTE CIERRE TERMINA EL EVENTO DE MENSAJES
-
-    // ==========================================
-    // ⏰ SISTEMAS PASIVOS Y ARRANQUE
-    // ==========================================
-
+    // ⏰ SPAWN DE BOSSES (cada 30 minutos)
     setInterval(() => {
-        db.forEach((u) => {
-            const gU = getGrado(u.xp);
-            const maxHp = gU.hpBase + (u.dedos * 100);
-            const maxEn = gU.enBase + (u.dedos * 500);
-            const regenEN = u.tieneBrazo ? 2 : 1;
-            if (u.hp < maxHp) u.hp = Math.min(maxHp, u.hp + 10);
-            if (u.en < maxEn) u.en = Math.min(maxEn, u.en + (5 * regenEN));
-        });
-        guardarDatos();
-    }, 60000);
+        if (!config.setupMaldiciones) return;
+        const canal = client.channels.cache.get(config.setupMaldiciones);
+        if (!canal || !(canal instanceof TextChannel)) return;
 
-    client.once('ready', (c) => {
-        cargarDatos();
-        console.log("-----------------------------------------");
-        console.log("🏯 SHINJUKU ETERNITY ENGINE: ONLINE");
-        console.log(`🤖 Sesión iniciada como: ${c.user.tag}`);
-        console.log("-----------------------------------------");
-    });
+        if (bossesActivos.has(canal.id)) return;
 
-    client.login(process.env.DISCORD_TOKEN).catch(err => {
-        console.error("❌ ERROR AL INICIAR:", err.message);
-    });
+        const boss = spawnBossAleatorio();
+        bossesActivos.set(canal.id, { s: boss, hpActual: boss.hp });
+
+        void canal.send({ embeds: [
+            new EmbedBuilder()
+                .setTitle(`🚨 ¡MALDICIÓN DETECTADA! — ${boss.n}`)
+                .setDescription(
+                    `❤️ **HP:** ${boss.hp.toLocaleString()}\n` +
+                    `💴 **Recompensa:** $${boss.y.toLocaleString()}\n` +
+                    `✨ **XP:** ${boss.xp.toLocaleString()}\n\n` +
+                    `Usa \`!exorcizar\` para atacarla.`
+                )
+                .setColor(0xFF0000)
+        ]});
+    }, 30 * 60 * 1000);
+
+    // ⏰ SPAWN DEL CALLEJÓN (cada 15 minutos)
+    setInterval(() => {
+        if (!config.setupCallejon) return;
+        const canal = client.channels.cache.get(config.setupCallejon);
+        if (!canal || !(canal instanceof TextChannel)) return;
+
+        if (config.itemCallejonActual) return;
+
+        const item = spawnItemCallejon();
+        config.itemCallejonActual = item;
+        config.itemCallejonExpira = Date.now() + 10 * 60 * 1000;
+        guardarConfig();
+
+        void canal.send({ embeds: [
+            new EmbedBuilder()
+                .setTitle("🎁 ¡OBJETO EN EL CALLEJÓN!")
+                .setDescription(`Apareció **${item}** en el callejón.\nUsa \`!recoger\` para tomarlo.\n⏳ Desaparece en **10 minutos**.`)
+                .setColor(0x9B59B6)
+        ]});
+    }, 15 * 60 * 1000);
+});
+
+client.login(process.env['DISCORD_TOKEN']).catch(err => {
+    console.error("❌ ERROR AL INICIAR:", (err as Error).message);
+});
+
+// ==========================================
+// 🌐 SERVIDOR DE SALUD (para Railway / Replit)
+// ==========================================
+const PORT = process.env['PORT'] ? parseInt(process.env['PORT']) : 8080;
+http.createServer((_req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', bot: client.user?.tag ?? 'offline' }));
+}).listen(PORT, () => {
+    console.log(`🌐 Health server en puerto ${PORT}`);
+});
