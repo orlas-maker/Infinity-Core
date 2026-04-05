@@ -1,13 +1,16 @@
 {
   "name": "infinity-core",
   "version": "1.0.0",
-  "description": "Bot de Jujutsu Kaisen",
-  "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "dependencies": {
-    "discord.js": "^14.11.0",
-    "dotenv": "^16.0.0"
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "@types/node": "^22.0.0"
   }
 }
