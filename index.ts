@@ -1488,34 +1488,413 @@ client.on(Events.MessageCreate, async (msg) => {
     // ❓ AYUDA
     // ==========================================
     if (cmd === 'ayuda' || cmd === 'comandos' || cmd === 'help') {
-        const embed = new EmbedBuilder()
-            .setTitle("📖 GUÍA DE COMANDOS — SHINJUKU SHOWDOWN")
+
+        // ── EMBED 1: BIENVENIDA & PRIMEROS PASOS ────────────────────────
+        const e1 = new EmbedBuilder()
+            .setTitle("🏯 SHINJUKU SHOWDOWN — ETERNITY ENGINE v10.0")
+            .setDescription(
+                "**Bienvenido al RPG más completo de Jujutsu Kaisen en Discord.**\n" +
+                "Esta guía cubre absolutamente todo. Léela con calma, es tu manual de supervivencia.\n\n" +
+                "🔑 **Prefijo:** `!` (todos los comandos empiezan con `!`)\n" +
+                "📦 **Registro:** Automático. La primera vez que escribes un comando, el bot te registra.\n" +
+                "⚠️ **Esta guía se autoeliminará en 10 minutos.** Léela ahora o usa `!ayuda` de nuevo.\n\n" +
+                "**Lo que tiene este bot:**\n" +
+                "▸ 120 técnicas de combate únicas repartidas en 7 clanes\n" +
+                "▸ 5 grados con estadísticas que escalan (G4 → G3 → G2 → G1 → Especial)\n" +
+                "▸ 100 logros desbloqueables con recompensas reales\n" +
+                "▸ Sistema de misiones infinitas con dificultad escalable\n" +
+                "▸ Economía completa: trabajo, robo, tienda, trueque, donaciones\n" +
+                "▸ Bosses aleatorios cada 30 min · Callejón cada 15 min\n" +
+                "▸ Sistema de sellos, pactos, duelos y dominios\n" +
+                "▸ Dedos de Sukuna (1–20) que potencian tus stats permanentemente\n" +
+                "▸ Objetos equipables con efectos reales en combate"
+            )
             .setColor(0x2C2F33)
             .addFields(
-                { name: "👤 Perfil & Progreso", value:
-                    "`!perfil` — Tu ficha\n`!inventario` — Tus objetos\n`!clan` — Info de tu clan\n`!ranking xp|yenes|dedos|hp|kills` — Top 10",
-                    inline: false },
-                { name: "⚔️ Combate", value:
-                    "`![técnica] @usuario` — Atacar (cada técnica tiene cooldown)\n`!retar @usuario` — Desafiar a duelo\n`!aceptar` — Aceptar un reto\n`!exorcizar` — Atacar boss activo\n`!maldiciones` — Bosses activos\n`!meditar` — Recuperar energía (1x/2h)",
-                    inline: false },
-                { name: "💰 Economía", value:
-                    "`!trabajar` — Ganar yenes (1x/1h)\n`!diario` — Recompensa diaria\n`!robar @usuario` — Intentar robar (cd 2h)\n`!donar @usuario [cantidad]` — Transferir yenes\n`!tienda` — Ver tienda\n`!comprar [item]` — Comprar ítem\n`!vender [item]` — Vender ítem (30% del precio)\n`!recuperar` — Restaurar HP con yenes\n`!comer_dedo` — Comprar dedo ($100k)\n`!comprar_reroll` — Cambiar clan ($150k)",
-                    inline: false },
-                { name: "🎒 Inventario & Equipamiento", value:
-                    "`!tecnicas` — Ver técnicas de tu clan\n`!equipar [nombre]` — Equipar objeto\n`!recoger` — Recoger ítem del callejón\n`!usar_sello pequeño|estandar|eterno @usuario` — Sellar",
-                    inline: false },
-                { name: "🎯 Misiones & Logros", value:
-                    "`!mision` — Ver tu misión activa\n`!logros` — Ver tus logros (100 en total)\n`!historial` — Ver últimos eventos del servidor",
-                    inline: false },
-                { name: "🤝 Social", value:
-                    "`!pactar @usuario` — Formar pacto\n`!intercambiar @usuario [item]` — Proponer intercambio\n`!aceptar_intercambio [item]` — Aceptar intercambio\n`!estadisticas` — Ver tus kills y stats de combate",
-                    inline: false },
-                { name: "🛠️ Admin", value:
-                    "`!setup_maldiciones` · `!setup_callejon`\n`!add_xp/yenes @user [n]` · `!remove_xp/yenes @user [n]`\n`!set_hp @user [valor]` · `!quitar_objeto @user [item]`\n`!quitar_sellado @user` · `!reiniciar @user`",
-                    inline: false }
+                { name: "👤 !perfil",
+                  value: "Tu ficha completa. Muestra: **Grado actual, HP actual/máximo, Energía actual/máxima, Yenes, XP total, Dedos de Sukuna (X/20), objeto equipado y estado de sello** (libre o prisionero).\n📐 Fórmulas reales:\n`HP máx = HPBase_del_Grado + (Dedos × 100)`\n`EN máx = ENBase_del_Grado + (Dedos × 500)`",
+                  inline: false },
+                { name: "🎒 !inventario",
+                  value: "Lista numerada de todos tus objetos y qué tienes equipado ahora mismo. Usa los nombres de aquí para `!equipar`, `!vender` e `!intercambiar`.",
+                  inline: false },
+                { name: "📊 !estadisticas",
+                  value: "Panel de rendimiento. Muestra: **kills PvP, bosses exorcizados, técnicas usadas, yenes, XP y dedos actuales**. Ideal para compararte con otros jugadores.",
+                  inline: false },
+                { name: "🏛️ !clan",
+                  value: "Ficha de tu clan: miembros activos, número de técnicas disponibles y los comandos principales. Si no tienes clan aún, un admin debe asignarte uno.",
+                  inline: false },
+                { name: "📊 !tecnicas",
+                  value: "Lista completa de **todas las técnicas de tu clan** ordenadas por Grado, con el comando exacto y el costo de Energía de cada una. Antes de combatir, consúltalo.",
+                  inline: false },
+                { name: "🏆 !ranking [tipo]",
+                  value: "Top 10 global. Cinco categorías:\n`!ranking xp` — Por XP acumulada\n`!ranking yenes` — Por yenes en bolsillo\n`!ranking dedos` — Por Dedos de Sukuna\n`!ranking hp` — Por HP actual en tiempo real\n`!ranking kills` — Por kills PvP totales",
+                  inline: false },
+                { name: "📜 !historial",
+                  value: "Muestra los **últimos 15 eventos globales** del servidor en tiempo real (kills, exorcismos, sellos). Ideal para saber quién está dominando ahora mismo.",
+                  inline: false }
             )
-            .setFooter({ text: "Usa las técnicas de tu clan. 120 técnicas disponibles." });
-        return void msg.reply({ embeds: [embed] });
+            .setFooter({ text: "📖 Página 1/15 — Introducción & Perfil · Solo tú ves esta guía · Se elimina en 10 min" });
+
+        // ── EMBED 2: SISTEMA DE GRADOS ──────────────────────────────────
+        const e2 = new EmbedBuilder()
+            .setTitle("🎖️ SISTEMA DE GRADOS — PROGRESIÓN COMPLETA")
+            .setDescription(
+                "El grado define tus estadísticas base, tu multiplicador de daño y qué técnicas puedes usar en combate.\n" +
+                "**Subir de grado es automático**: cuando acumulas suficiente XP, el bot detecta tu nuevo grado en el siguiente comando que uses.\n\n" +
+                "Para subir de grado rápido: combate PvP, exorciza bosses, haz misiones y reclama el diario cada día."
+            )
+            .setColor(0xFFD700)
+            .addFields(
+                { name: "⚪ Grado 4 — Inicio",
+                  value: "**XP requerida:** 0\n**HP base:** 200 · **EN base:** 200 · **Multiplicador de daño:** ×1.0\n_El punto de partida. Técnicas básicas, poco daño. Sube rápido._",
+                  inline: false },
+                { name: "🟢 Grado 3 — Aprendiz",
+                  value: "**XP requerida:** 5,000\n**HP base:** 600 · **EN base:** 700 · **Multiplicador de daño:** ×2.5\n_Daño 2.5× más alto. Desbloqueas técnicas más costosas y potentes._",
+                  inline: false },
+                { name: "🔵 Grado 2 — Hechicero",
+                  value: "**XP requerida:** 20,000\n**HP base:** 1,500 · **EN base:** 1,800 · **Multiplicador de daño:** ×6.0\n_Gran salto de poder. Técnicas de Grado 2 hacen daño serio en PvP._",
+                  inline: false },
+                { name: "🔴 Grado 1 — Élite",
+                  value: "**XP requerida:** 60,000\n**HP base:** 4,000 · **EN base:** 5,000 · **Multiplicador de daño:** ×12.0\n_Tier superior. Tus ataques pueden destruir en un golpe a Grado 4._",
+                  inline: false },
+                { name: "🟡 Grado Especial — Cúspide",
+                  value: "**XP requerida:** 150,000\n**HP base:** 12,000 · **EN base:** 15,000 · **Multiplicador de daño:** ×30.0\n_El máximo. Técnicas de Dominio desbloqueadas. Si eres del clan Gojo: pasiva **Seis Ojos** activa (99% reducción de costo de Energía)._",
+                  inline: false },
+                { name: "📐 Fórmula de Daño Real",
+                  value: "```Daño Final = Daño_Base_Técnica × Multiplicador_Grado × (1 + Dedos × 0.10)```\nEjemplo: `!azul` (d=150) en Grado 2 (×6) con 5 dedos:\n`150 × 6 × 1.5 = 1,350 de daño`\nLos dedos son un multiplicador permanente acumulativo: **cada dedo = +10% de daño extra**.",
+                  inline: false },
+                { name: "⚡ Regeneración Pasiva (automática cada 60 segundos)",
+                  value: "▸ **+10 HP** por minuto (hasta el máximo)\n▸ **+5 Energía Maldita** por minuto (hasta el máximo)\n▸ Con **Brazo de Sukuna equipado**: +10 EN/min (×2 de energía)\nNo necesitas hacer nada, ocurre solo en segundo plano mientras el bot está online.",
+                  inline: false },
+                { name: "💡 Cómo ganar XP rápido",
+                  value: "1. `!trabajar` cada hora (hasta 6,000 XP indirecta vía yenes)\n2. `!diario` diario (+200–700 XP por día)\n3. Ganar combates PvP (+5,000 XP por kill)\n4. Exorcizar bosses (200–100,000 XP según el boss)\n5. `!comer_dedo` (+15,000 XP por dedo, máx 20)\n6. Completar misiones (XP escalable según nivel)",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 2/15 — Sistema de Grados" });
+
+        // ── EMBED 3: LOS 7 CLANES ───────────────────────────────────────
+        const e3 = new EmbedBuilder()
+            .setTitle("🏛️ LOS 7 CLANES — TÉCNICAS & IDENTIDAD")
+            .setDescription(
+                "Tu clan determina **qué 20 técnicas puedes usar**. Cada clan tiene técnicas únicas para cada grado.\n" +
+                "Para ver tus técnicas exactas usa `!tecnicas`. Para cambiar de clan: `!comprar_reroll` ($150,000 Yenes, resultado aleatorio).\n\n" +
+                "**Nota:** Solo puedes usar técnicas de tu propio clan, salvo que tengas equipadas las **Gafas de Maki**."
+            )
+            .setColor(0x8B0000)
+            .addFields(
+                { name: "👁️ CLAN GOJO — Técnica del Infinito",
+                  value: "El clan más equilibrado. Domina la manipulación espacial y el Mugen.\n**Pasiva exclusiva:** En Grado Especial activa **Seis Ojos** → costo de Energía reducido al **1%** de lo normal.\n**Técnicas destacadas:** `!azul` `!rojo` `!purpura` `!vacio` (Dominio) `!seisojos` (buff)\n**Dominio:** `!vacio` — Vacío Infinito (d=6,000 · 5,000 EN)",
+                  inline: false },
+                { name: "💀 CLAN SUKUNA — El Rey de las Maldiciones",
+                  value: "El clan de mayor daño bruto del juego. Técnicas destructivas y dos RCT de curación poderosos.\n**Técnicas destacadas:** `!desmantelar` `!partir` `!corte_mundo` (d=9,999) `!santuario` (Dominio) `!regen_absoluta` (cura -2,000)\n**Dominio:** `!santuario` — Santuario Malévolo (d=6,500 · 4,500 EN)",
+                  inline: false },
+                { name: "⚔️ CLAN ZENIN — Arte de los 10,000 Demonios",
+                  value: "Versatilidad total: ataques físicos, invocaciones, técnicas sin costo de Energía (Toji).\n**Pasiva Toji:** `!toji_slash` y `!cadena` tienen costos de EN mínimos (20 EN).\n**Técnicas destacadas:** `!proyeccion` `!sombras_10` `!mahoraga_zenin` `!lanza` (d=1,200)\n**Dominio:** `!mahoraga_zenin` — General Divino (d=1,500 · 2,000 EN)",
+                  inline: false },
+                { name: "👾 MALDICIONES DESASTROSAS — Calamidades Naturales",
+                  value: "El clan con **más dominios disponibles** (4 Dominios de Expansión). Técnicas elementales devastadoras.\n**Técnicas destacadas:** `!meteorito` `!ataud` (Dom) `!autoencarnacion` (Dom) `!dominio_hanami` (Dom) `!dominio_dagon` (Dom)\n**Dominio más fuerte:** `!autoencarnacion` — Perfección de Alma (d=5,500 · 4,500 EN)",
+                  inline: false },
+                { name: "🌌 HECHICEROS ERRANTES — Sin Linaje, Sin Límites",
+                  value: "Clan genérico pero equilibrado. Tiene técnicas de curación, defensa y daño moderado. Perfecto para principiantes.\n**Técnicas destacadas:** `!sacrificio` `!cañon` `!expansion_incompleta` (Dom) `!rct_basico` (cura -200)\n**Dominio:** `!expansion_incompleta` — Dominio Incompleto (d=3,000 · 2,500 EN)",
+                  inline: false },
+                { name: "🩸 CLAN KAMO — Manipulación de Sangre",
+                  value: "Especialistas en escudos de sangre y ataques balísticos. Tienen curación con `!transfusion` y gran daño en Grado Especial.\n**Técnicas destacadas:** `!sangre_lanza` `!explosion_sangre` `!meteoro_sangre` `!dominio_kamo` (Dom)\n**Dominio:** `!dominio_kamo` — Campo Carmesí Eterno (d=5,500 · 4,500 EN)",
+                  inline: false },
+                { name: "🗣️ CLAN INUMAKI — Maldición del Lenguaje",
+                  value: "Técnicas de voz que escalan brutalmente en Grado Especial. Solo 10 técnicas pero incluyen el ataque más alto del juego junto a Sukuna.\n**Técnicas destacadas:** `!explotar_voz` `!aplastado` `!morir` (d=4,500) `!dominio_inumaki` (Dom)\n**Dominio:** `!dominio_inumaki` — Eco del Alma (d=5,200 · 4,200 EN)",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 3/15 — Los 7 Clanes" });
+
+        // ── EMBED 4: TÉCNICAS GOJO & SUKUNA COMPLETAS ───────────────────
+        const e4 = new EmbedBuilder()
+            .setTitle("⚔️ CATÁLOGO TÉCNICAS — GOJO & SUKUNA")
+            .setDescription("Lista completa de técnicas. Formato: `!comando` — Nombre · Daño · Costo EN · Cooldown")
+            .setColor(0x6A0DAD)
+            .addFields(
+                { name: "👁️ LINAJE GOJO (20 técnicas)",
+                  value: "`!vuelo` Levitación · 10d · 30en · 30s\n`!brillo` Brillo Maldito · 80d · 50en · 5min\n`!ola_gojo` Ola de Energía · 70d · 40en · 5min\n`!pulso_gojo` Pulso de Mugen · 90d · 55en · 5min\n`!caida` Caída Libre · 120d · 90en · 5min\n`!teleport` Salto Espacial · 50d · 80en · 5min\n`!infinito` Mugen Barrera · def · 200en · 20s\n`!barrera_simple` Dominio Simple · def · 150en · 20s\n`!azul` Azul Laplace · 150d · 100en · 20min\n`!rojo` Rojo Inversión · 350d · 250en · 1h\n`!puño_gojo` Puño con Infinito · 300d · 150en · 1h\n`!percepcion` Lectura de Alma · buff · 100en · 20s\n`!rct_gojo` RCT -400hp · 800en · 20s\n`!aura_gojo` Presencia Abrumadora · buff · 500en · 2h\n`!destello_gojo` Kokusen · 600d · 400en · 2h\n`!laplace_max` Azul Máximo · 800d · 600en · 2h\n`!inversion_max` Rojo Máximo · 1,000d · 750en · 2h\n`!purpura` Púrpura Imaginario · 1,200d · 900en · 6h\n`!infinito_exp` Expansión Mugen · buff · 1,000en · 24h\n`!purpura_200` Púrpura 200% · 3,000d · 2,500en · 12h\n`!vacio` ★DOM Vacío Infinito · 6,000d · 5,000en · 24h\n`!seisojos` ★BUFF Seis Ojos · 0en · 20s",
+                  inline: false },
+                { name: "💀 CLAN SUKUNA (20 técnicas)",
+                  value: "`!boxeo` Taijutsu Heian · 200d · 50en · 30s\n`!aranazo` Zarpazo del Rey · 110d · 35en · 5min\n`!mordida_sukuna` Mordida Maldita · 80d · 25en · 5min\n`!presion_rey` Presión Primordial · 130d · 45en · 5min\n`!instinto_rey` Instinto del Rey · def · 50en · 20s\n`!desmantelar` Kai · 160d · 80en · 20min\n`!escision` Escisión · 250d · 150en · 20min\n`!nue` Nue Quimera · 350d · 250en · 20min\n`!intimidacion` Miedo Primordial · buff · 200en · 20s\n`!partir` Hachi · 400d · 200en · 1h\n`!telaraña` Escala de Araña · 450d · 300en · 1h\n`!aura_rey` Sed de Sangre · 100d · 300en · 1h\n`!corte_invisible` Tajo Indetectable · 600d · 400en · 2h\n`!agito` Bestia Agito · 800d · 600en · 2h\n`!rct_sukuna` Regeneración Rey · -500hp · 1,000en · 20s\n`!cleave_max` Hachi Concentrado · 900d · 500en · 2h\n`!flecha_fuego` Lluvia de Fuego · 1,100d · 800en · 2h\n`!fuga` Abierto Fuga · 2,000d · 1,200en · 6h\n`!mahoraga` Invocación Mahoraga · 1,500d · 2,000en · 6h\n`!tajo_divino` Corte a los Dioses · 4,000d · 3,000en · 12h\n`!regen_absoluta` Restauración Alma · -2,000hp · 4,000en · 24h\n`!adaptacion` Giro de Rueda · def · 1,500en · 24h\n`!santuario` ★DOM Santuario Malévolo · 6,500d · 4,500en · 24h\n`!corte_mundo` ★ULTRA Corte del Mundo · 9,999d · 8,000en · 24h",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 4/15 — Técnicas Gojo & Sukuna · ★DOM = Dominio de Expansión" });
+
+        // ── EMBED 5: TÉCNICAS ZENIN, MALDICION, ERRANTE ─────────────────
+        const e5 = new EmbedBuilder()
+            .setTitle("⚔️ CATÁLOGO TÉCNICAS — ZENIN, MALDICIÓN & ERRANTE")
+            .setColor(0xFF4444)
+            .addFields(
+                { name: "⚔️ FAMILIA ZENIN (20 técnicas)",
+                  value: "`!sapo` Invocación Sapo · 150d · 100en · 20min\n`!taijutsu_zenin` Artes Marciales · 180d · 15en · 30s\n`!espada_zenin` Katana Maldita · 200d · 50en · 30s\n`!conejo` Escape Conejos · def · 100en · 20s\n`!dominio_simple` Dominio Simple · def · 150en · 20s\n`!toji_slash` Tajo Físico · 350d · 20en · 20min\n`!lobo` Perro Divino · 250d · 150en · 20min\n`!nue_zenin` Nue · 280d · 200en · 20min\n`!proyeccion` Proyección 24FPS · 300d · 180en · 1h\n`!sombras_10` Diez Sombras · 450d · 350en · 1h\n`!cadena` Cadena Mil Millas · 500d · 20en · 1h\n`!serpiente` Gran Serpiente · 400d · 250en · 1h\n`!corte_rapido` Iaijutsu · 350d · 100en · 1h\n`!barrera_zenin` Arte Secreto · def · 300en · 2h\n`!elefante` Elefante Máximo · 600d · 400en · 2h\n`!destello_zenin` Impacto Crítico · 700d · 200en · 2h\n`!nube` Nube Itinerante · 800d · 30en · 2h\n`!lanza` Lanza del Cielo · 1,200d · 40en · 12h\n`!percepcion_toji` ★BUFF Sentidos Agudizados · 0en · 20s\n`!mahoraga_zenin` ★DOM General Divino · 1,500d · 2,000en · 12h",
+                  inline: false },
+                { name: "👾 MALDICIONES DESASTROSAS (20 técnicas)",
+                  value: "`!espina` Madera Maldita · 150d · 100en · 5min\n`!zarpa_maldita` Zarpa Maldita · 100d · 55en · 5min\n`!veneno_maldito` Aliento Tóxico · 80d · 45en · 5min\n`!grito_maldicion` Aullido · 120d · 65en · 5min\n`!emanacion` ★BUFF Emanación Oscura · 35en · 20s\n`!agua_maldita` Torrente Oscuro · 300d · 200en · 20min\n`!clon_mahito` Clon de Alma · 200d · 150en · 20min\n`!raices` Raíces de Hanami · 350d · 200en · 20min\n`!desastre_fuego` Llama de Jogo · 400d · 250en · 20min\n`!aura_desastre` Miedo Humano · 250d · 250en · 20min\n`!armadura` Corteza Hanami · def · 400en · 1h\n`!flor_sangre` Campo de Flores · def · 300en · 1h\n`!tiburon` Tiburón de Dagon · 500d · 350en · 1h\n`!metamorfosis` Mutación Inactiva · 600d · 400en · 2h\n`!regen_maldita` Curación Maldición · -400hp · 300en · 20s\n`!magma` Roca Volcánica · 700d · 500en · 2h\n`!toque_alma` Deformación · 800d · 600en · 2h\n`!explosion` Detonación Jogo · 1,200d · 900en · 2h\n`!enjambre` Muerte Enjambrada · 900d · 700en · 2h\n`!meteorito` Meteorito Máximo · 2,500d · 2,000en · 12h\n`!ataud` ★DOM Ataúd Montaña · 5,000d · 4,000en · 24h\n`!autoencarnacion` ★DOM Perfección Alma · 5,500d · 4,500en · 24h\n`!dominio_hanami` ★DOM Mar de Luz · 4,800d · 3,800en · 24h\n`!dominio_dagon` ★DOM Horizonte Cautivador · 4,900d · 3,900en · 24h",
+                  inline: false },
+                { name: "🌌 HECHICEROS ERRANTES (20) · 🩸 CLAN KAMO (15) · 🗣️ INUMAKI (14)",
+                  value: "**Errante:** `!golpe_maldito` 100d·50en · `!patada` 180d·90en · `!invocacion` 150d·120en · `!talisman` 300d·200en · `!disparo` 250d·180en · `!corte_espada` 200d·100en · `!divergente` 400d·300en · `!golpe_doble` 350d·250en · `!rafaga` 500d·400en · `!cañon` 1,500d·1,200en · `!sacrificio` 2,000d·1,500en · `!expansion_incompleta` ★DOM 3,000d·2,500en\n\n**Kamo:** `!gota_sangre` 80d·50en · `!pulso_sangre` 100d·65en · `!rociado` 120d·80en · `!coagulacion` 200d·150en · `!sangre_bala` 280d·180en · `!sangre_lanza` 450d·300en · `!torrente_sangre` 700d·500en · `!explosion_sangre` 1,100d·800en · `!meteoro_sangre` 2,500d·2,000en · `!dominio_kamo` ★DOM 5,500d·4,500en\n\n**Inumaki:** `!susurro` 60d·70en · `!eco_voz` 80d·85en · `!resonar` 200d·120en · `!chillido` 110d·95en · `!dormir` 100d·200en · `!encogete` 400d·300en · `!explotar_voz` 600d·400en · `!voz_maldita` 350d·250en · `!aplastado` 800d·600en · `!grito_inumaki` 1,300d·1,000en · `!morir` 4,500d·3,500en · `!dominio_inumaki` ★DOM 5,200d·4,200en",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 5/15 — Catálogo de Técnicas completo · ★DOM = Dominio de Expansión" });
+
+        // ── EMBED 6: COOLDOWNS & SISTEMA DE COMBATE PVP ─────────────────
+        const e6 = new EmbedBuilder()
+            .setTitle("⏱️ COOLDOWNS & SISTEMA DE COMBATE PvP")
+            .setDescription(
+                "Los cooldowns se calculan **por el daño base de la técnica**, no por el grado del usuario.\n" +
+                "Cada técnica tiene su propio temporizador independiente: puedes usar `!azul` mientras esperas que `!rojo` se recargue."
+            )
+            .setColor(0xFF0000)
+            .addFields(
+                { name: "⏱️ Tabla de Cooldowns por Daño Base",
+                  value: "```\nDaño 0 (buff/def/heal) → 20 segundos\nDaño 1–49             → 30 segundos\nDaño 50–149           → 5 minutos\nDaño 150–299          → 20 minutos\nDaño 300–599          → 1 hora\nDaño 600–1,499        → 2 horas\nDaño 1,500–2,999      → 6 horas\nDaño 3,000–5,499      → 12 horas\nDaño 5,500+           → 24 horas\n```",
+                  inline: false },
+                { name: "⚔️ Cómo atacar en PvP",
+                  value: "Usa `![técnica] @usuario` en el canal de combate.\nEjemplo: `!azul @Sukuna`\n▸ La técnica debe ser de tu clan (o tienes Gafas de Maki equipadas)\n▸ Debes tener suficiente Energía Maldita\n▸ Debes esperar el cooldown de esa técnica específica\n▸ El objetivo no debe estar sellado\n▸ **Si tu HP llega a 0**: resucitas con 10% de HP y el atacante gana yenes + 5,000 XP",
+                  inline: false },
+                { name: "💀 Consecuencias de morir en PvP",
+                  value: "▸ Tu HP se restaura automáticamente al **100%** (el sistema lo resetea)\n▸ El ganador recibe: `$25,000 × multiplicador_de_grado` + **5,000 XP**\n▸ El evento queda registrado en `!historial`\n▸ El ganador suma +1 kill hacia sus logros de PvP\n▸ El ganador puede ganar el rol **Rey de las Maldiciones** si tiene 20 dedos",
+                  inline: false },
+                { name: "🥊 !retar @usuario — Duelo Formal",
+                  value: "Lanza un desafío formal. El rival tiene **60 segundos** para aceptar con `!aceptar`.\n▸ Si acepta: el combate es libre, usan técnicas hasta que uno caiga\n▸ Si no acepta en 60 s: el reto expira sin consecuencias\n▸ No puedes retar a bots ni a ti mismo\n▸ Solo puede haber un reto pendiente por jugador a la vez\n▸ Después de aceptar, el combate continúa con técnicas normales",
+                  inline: false },
+                { name: "🌌 Sistema de Dominios de Expansión",
+                  value: "Los Dominios son las técnicas más poderosas del juego. Tienen reglas especiales:\n▸ Si dos jugadores activan un Dominio dentro de **10 segundos** uno del otro → **CHOQUE DE DOMINIOS**\n▸ En un choque: **gana el jugador con más XP total**\n▸ El perdedor pierde la Energía del Dominio pero no hace daño\n▸ Si solo uno activa Dominio sin respuesta, el ataque se ejecuta normalmente\n▸ Los Dominios tienen cooldown de **12–24 horas**",
+                  inline: false },
+                { name: "🛡️ Técnicas Defensivas (def) y de Curación (heal)",
+                  value: "**Defensivas (buff/def):** Costo de solo 20s de cooldown. Activan un escudo o buff pasivo por turno.\n**Curación (RCT):** Daño negativo = te curas a TI MISMO ese HP. Sin mencionar a nadie.\nEjemplos de curación:\n▸ `!rct_gojo` — -400 HP curado (800 EN)\n▸ `!rct_sukuna` — -500 HP curado (1,000 EN)\n▸ `!regen_absoluta` — -2,000 HP curado (4,000 EN)\n▸ `!regen_maldita` — -400 HP curado (300 EN)\n▸ `!transfusion` — -350 HP curado (600 EN)",
+                  inline: false },
+                { name: "🤝 Pactos de Sangre — !pactar @usuario",
+                  value: "Forma un vínculo maldito con otro jugador.\n▸ Cuando alguien ataque a tu aliado pactado, **tú también recibes la mitad del daño**\n▸ El pacto es **mutuo y bidireccional**: ambos sufren si alguno es atacado\n▸ Solo puedes tener **un pacto activo** a la vez\n▸ Úsalo para proteger a compañeros de clan o como escudo estratégico en guerra de clanes",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 6/15 — Combate PvP & Sistema de Cooldowns" });
+
+        // ── EMBED 7: BOSSES & EXORCISMO ─────────────────────────────────
+        const e7 = new EmbedBuilder()
+            .setTitle("👾 BOSSES & SISTEMA DE EXORCISMO")
+            .setDescription(
+                "Cada **30 minutos**, el bot hace spawn de una maldición en el canal configurado como `setupMaldiciones`.\n" +
+                "El HP del boss es **compartido** entre todos los jugadores que ataquen. El que da el **golpe final** se lleva toda la recompensa.\n\n" +
+                "Para ver si hay un boss activo: `!maldiciones`."
+            )
+            .setColor(0x8B0000)
+            .addFields(
+                { name: "👾 Tabla de Bosses & Probabilidades",
+                  value: "```\nMaldición de Grado 4      HP:    300  $2,000     200 XP  prob≈64%\nMaldición de Grado 1      HP:  5,000  $30,000  4,000 XP  prob≈26%\nBOSS: Toji Fushiguro      HP: 20,000 $200,000 25,000 XP  prob≈6.5%\nBOSS: Rey de Maldiciones  HP: 80,000 $1,000,000 100,000 XP  prob≈1.3%\n```\n_Las probabilidades son aproximadas según el sistema de peso del spawn._",
+                  inline: false },
+                { name: "⚔️ !exorcizar — Atacar al Boss",
+                  value: "▸ **Costo por ataque:** 30 Energía Maldita\n▸ **Fórmula de daño:** `100 × multiplicador_grado × (1 + dedos × 0.10)`\n▸ Con **Gafas de Maki equipadas:** daño al boss ×1.20 (20% extra)\n▸ Si estás **sellado** o con HP en 0 no puedes atacar\n▸ El golpe final = **toda la recompensa** en yenes y XP\n▸ Si tienes 20 dedos: ganas el rol **Rey de las Maldiciones** automáticamente al dar el golpe\n\n**Estrategia:** Coordina con tu clan para que el jugador con más daño dé el último golpe.",
+                  inline: false },
+                { name: "💀 !maldiciones — Ver bosses activos",
+                  value: "Lista todos los bosses activos en todos los canales del servidor con su HP restante en tiempo real. Si no hay bosses activos, el canal estará vacío hasta el próximo spawn (cada 30 min).",
+                  inline: false },
+                { name: "💡 Estrategia Anti-Boss",
+                  value: "1. Todos atacan el boss para bajarle HP\n2. El que vaya a dar el golpe final que tenga el Grado más alto posible y los 20 dedos para maximizar la recompensa y ganar el rol\n3. Si tienes **Gafas de Maki**: activa el +20% de daño a bosses\n4. Mantén tu Energía alta con `!meditar` antes de atacar bosses grandes\n5. El **Rey de las Maldiciones** (80k HP) da $1,000,000 — el evento más lucrativo del juego",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 7/15 — Bosses & Exorcismo" });
+
+        // ── EMBED 8: ECONOMÍA — TRABAJO, DIARIO, ROBO ───────────────────
+        const e8 = new EmbedBuilder()
+            .setTitle("💴 ECONOMÍA — TRABAJO, DIARIO & ROBO")
+            .setDescription("Los yenes son la moneda del juego. Se usan para comprar objetos, recuperar HP, comer dedos y sellar rivales. Cuantos más tengas, más poder puedes comprar.")
+            .setColor(0x00CC88)
+            .addFields(
+                { name: "💼 !trabajar — Cooldown: 1 hora",
+                  value: "Realiza una misión aleatoria del mundo Jujutsu y ganas yenes al instante.\n**Posibles misiones y recompensas:**\n▸ Patrullaste Shinjuku → **$500**\n▸ Exorcizaste fantasmas menores → **$1,200**\n▸ Entrenaste en el Colegio Jujutsu → **$800**\n▸ Investigaste una maldición errante → **$3,000**\n▸ Vendiste objetos malditos → **$4,500**\n▸ Completaste una misión de Grado 4 → **$2,500**\n▸ Completaste una misión especial → **$6,000**\n\nLa misión se elige al azar. Haz esto cada hora sin falta.",
+                  inline: false },
+                { name: "🎁 !diario — Cooldown: 24 horas",
+                  value: "Reclama tu recompensa diaria una vez cada 24 horas.\n\n**Fórmula exacta de Yenes:**\n`Yenes = aleatorio(2,000–5,000) + (multiplicador_grado × 500)`\n\nEjemplos reales:\n▸ Grado 4 (×1.0): entre **$2,500** y **$5,500**\n▸ Grado 3 (×2.5): entre **$3,250** y **$6,250**\n▸ Grado 2 (×6.0): entre **$5,000** y **$8,000**\n▸ Grado 1 (×12): entre **$8,000** y **$11,000**\n▸ Grado Especial (×30): entre **$17,000** y **$20,000**\n\n**Fórmula de XP:** `aleatorio(200–700)` XP por día",
+                  inline: false },
+                { name: "🦹 !robar @usuario — Cooldown: 2 horas",
+                  value: "Intenta robar entre el **5%** y el **15%** de los yenes de otro jugador.\n\n**Fórmula exacta de probabilidad de éxito:**\n`tasa = clamp(0.20 a 0.65, base 0.40 + diferenciaXP / 200,000)`\n\nEjemplos:\n▸ Igual XP que el objetivo → **40%** de éxito\n▸ 100,000 XP más que el objetivo → **50%** de éxito\n▸ 50,000 XP menos que el objetivo → **~38%** de éxito\n▸ Mínimo posible: **20%** · Máximo posible: **65%**\n\n**Si fallas:** pierdes el **5% de tus propios yenes** como multa.\n**Requisito:** el objetivo debe tener al menos **$500 Yenes**.\n**Uso:** `!robar @usuario`",
+                  inline: false },
+                { name: "💸 !donar @usuario [cantidad]",
+                  value: "Transfiere yenes a otro jugador **sin ninguna comisión**. Sin límite de cantidad.\n▸ Ideal para pagos entre clanes, recompensas por ayuda o guerra económica\n▸ No puedes donarte a ti mismo\n▸ Debes tener suficientes yenes en tu saldo",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 8/15 — Economía: Trabajo, Diario & Robo" });
+
+        // ── EMBED 9: TIENDA & EQUIPAMIENTO ──────────────────────────────
+        const e9 = new EmbedBuilder()
+            .setTitle("🛒 TIENDA DEL MERCADO MALDITO & EQUIPAMIENTO")
+            .setDescription("Usa `!tienda` para ver la tienda en Discord. Compra con `!comprar [clave]`. El equipamiento activo da efectos reales en cada ataque.")
+            .setColor(0x9B59B6)
+            .addFields(
+                { name: "⛓️ Sellos Gokumonkyō — Usos tácticos",
+                  value: "`!comprar gokumonkyo_pequeño` → **$50,000** — Sella 10 minutos\n`!comprar gokumonkyo_estandar` → **$120,000** — Sella 30 minutos\n`!comprar gokumonkyo_eterno` → **$250,000** — Sella 1 hora\n\nEl sellado se activa con: `!usar_sello [variante] @usuario`\nEfecto: le quita todos sus roles de clan, no puede usar técnicas ni exorcizar.\nLos roles se restauran automáticamente al expirar.",
+                  inline: false },
+                { name: "🎯 Objetos de Combate — Efectos exactos",
+                  value: "`!comprar gafas_maki` → **$80,000** — Gafas de Maki\n▸ Puedes usar técnicas sin pertenecer a ningún clan\n▸ **+20% de daño a bosses** en `!exorcizar`\n\n`!comprar nube_itinerante` → **$200,000** — Nube Itinerante\n▸ **+50% de daño** en todos los ataques PvP\n▸ **+75% de daño** si el objetivo es del clan Zenin\n\n`!comprar lanza_invertida` → **$150,000** — Lanza Invertida\n▸ Tu daño **ignora la defensa** del oponente en PvP\n\n`!comprar brazo_de_sukuna` → **$750,000** — Brazo de Sukuna\n▸ **Daño ×3** en todos los ataques (PvP y bosses)\n▸ Regeneración de Energía **×2** por minuto (+10 EN/min en vez de +5)\n▸ Al comprarlo: `tieneBrazo = true` en tu perfil",
+                  inline: false },
+                { name: "☝️ !comer_dedo — $100,000 por dedo (máx 20)",
+                  value: "Asimila un Dedo de Sukuna. **No se compra con `!comprar`**, usa `!comer_dedo`.\n\n**Por cada dedo consumido:**\n▸ **+100 HP máximo** permanente\n▸ **+500 Energía Maldita máxima** permanente\n▸ **+10% de daño** permanente en todos los ataques\n▸ **+15,000 XP** (acelerador de grado)\n\n**Al llegar a 20 dedos:**\n▸ Ganas el rol **Rey de las Maldiciones** automáticamente\n▸ Si además tienes el Brazo de Sukuna: daño final ×3 sobre un base ya multiplicado por ×3 de dedos\n\n**Costo total de los 20 dedos:** $2,000,000 Yenes",
+                  inline: false },
+                { name: "🎲 !comprar_reroll — $150,000 · Cambio de Clan",
+                  value: "Cambia tu clan a uno **completamente aleatorio** (puede repetirse). Pierdes tus técnicas actuales y ganas las del nuevo clan.\n▸ El resultado es 100% aleatorio entre los 7 clanes disponibles\n▸ Tu XP, yenes y dedos **no se tocan**\n▸ Úsalo si quieres explorar otro linaje o si tu clan no te conviene estratégicamente",
+                  inline: false },
+                { name: "🏪 !vender [nombre exacto] — Venta de objetos",
+                  value: "Vende objetos de tu inventario por el **30% del precio de tienda**.\n▸ Gafas de Maki → $24,000 · Nube Itinerante → $60,000\n▸ Lanza Invertida → $45,000 · Brazo de Sukuna → $225,000\n▸ Si el objeto no tiene precio conocido: recibes **$500 fijos**\n▸ Si vendes el Brazo de Sukuna: pierdes el efecto ×3 daño y ×2 EN\n▸ El nombre debe ser **exacto** como aparece en `!inventario`\n▸ Ejemplo: `!vender Nube Itinerante`",
+                  inline: false },
+                { name: "💊 !recuperar — Restaurar HP al máximo",
+                  value: "Paga yenes para llevar tu HP al 100% al instante.\n**Fórmula exacta:** `costo = max($2,000, HP_faltante × 50 Yenes)`\n\nEjemplos:\n▸ Te faltan 100 HP → cuesta **$5,000**\n▸ Te faltan 500 HP → cuesta **$25,000**\n▸ Te faltan 2,000 HP → cuesta **$100,000**\n\nÚsalo antes de un combate importante o justo después de morir.",
+                  inline: false },
+                { name: "🎒 !equipar [nombre exacto] — Activar objeto",
+                  value: "Solo **un objeto equipado a la vez**. Para cambiar de equipo, usa `!equipar` con el nuevo nombre.\n▸ Ejemplos: `!equipar Gafas de Maki` · `!equipar Brazo de Sukuna`\n▸ El objeto debe estar en tu inventario (`!inventario`)\n▸ Equipar no consume el objeto, solo lo activa",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 9/15 — Tienda & Equipamiento con efectos exactos" });
+
+        // ── EMBED 10: SELLOS & CALLEJÓN ──────────────────────────────────
+        const e10 = new EmbedBuilder()
+            .setTitle("⛓️ SELLOS GOKUMONKYŌ & 🎁 CALLEJÓN DE SHINJUKU")
+            .setColor(0x4B0082)
+            .addFields(
+                { name: "⛓️ !usar_sello [variante] @usuario — Cómo sellar",
+                  value: "**Paso 1:** Compra el sello: `!comprar gokumonkyo_pequeño / estandar / eterno`\n**Paso 2:** Actívalo: `!usar_sello pequeño @usuario` (o `estandar` / `eterno`)\n\n▸ `pequeño` → **10 minutos** de sellado\n▸ `estandar` → **30 minutos** de sellado\n▸ `eterno` → **1 hora** de sellado\n\n**Efectos sobre el sellado:**\n▸ Pierde todos sus roles de clan y recibe el rol de **Prisionero (Gokumonkyō)**\n▸ No puede usar técnicas de ningún tipo\n▸ No puede exorcizar bosses\n▸ No puede combatir en PvP\n▸ Sus roles son **restaurados automáticamente** cuando expira el sello\n▸ Un admin puede deshacer el sello manualmente con `!quitar_sellado @usuario`",
+                  inline: false },
+                { name: "🎁 Callejón de Shinjuku — Spawn cada 15 minutos",
+                  value: "Cada **15 minutos** aparece un objeto gratis en el canal del callejón. El primero que use `!recoger` se lo lleva.\n\n**El objeto dura 10 minutos** antes de desaparecer solo.\n\n**Tabla de rareza exacta:**\n```\n60% — COMUNES\n  · Katana Maldita\n  · Sello Explosivo\n  · Poción de Energía\n\n30% — RAROS\n  · Gafas de Maki ($80,000 en tienda)\n  · Nube Itinerante ($200,000 en tienda)\n  · Lanza Invertida ($150,000 en tienda)\n\n10% — ESPECIALES\n  · Gokumonkyō (Pequeño)\n  · Gokumonkyō (Estándar)\n  · Gokumonkyō (Eterno)\n  · Brazo de Sukuna ($750,000 en tienda)\n```",
+                  inline: false },
+                { name: "🎁 !recoger — Cómo funciona",
+                  value: "▸ Solo funciona cuando hay un objeto activo en el callejón\n▸ Solo **un jugador** puede recoger el objeto (el primero en usar el comando)\n▸ El objeto va directo a tu `!inventario`\n▸ Si recoges el Brazo de Sukuna: `tieneBrazo = true` en tu perfil\n▸ Recoge callejón cuenta para misiones de tipo 'recoger' y logros\n▸ Logro inicial: **Primer Hallazgo** (primer objeto recogido) → $2,000 + 500 XP",
+                  inline: false },
+                { name: "💡 Estrategia del Callejón",
+                  value: "▸ Activa notificaciones del canal del callejón para ser el primero\n▸ Vale más la pena el callejón que la tienda si tienes paciencia: el **Brazo de Sukuna** gratis ahorra $750,000\n▸ Las **Gafas de Maki** y la **Nube Itinerante** son los objetos más valiosos del 30%\n▸ Los objetos comunes (Katana Maldita, Sello Explosivo) puedes venderlos por $500 si no los necesitas",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 10/15 — Sellos Gokumonkyō & Callejón" });
+
+        // ── EMBED 11: MISIONES & LOGROS ──────────────────────────────────
+        const e11 = new EmbedBuilder()
+            .setTitle("📋 SISTEMA DE MISIONES & 🏆 100 LOGROS")
+            .setDescription("Las misiones escalan infinitamente. Los logros dan recompensas reales en yenes y XP al desbloquearse.")
+            .setColor(0x9B59B6)
+            .addFields(
+                { name: "📋 !mision — Cómo funcionan",
+                  value: "▸ Si no tienes misión activa, se genera una automáticamente al usar `!mision`\n▸ El progreso se actualiza **automáticamente** al usar los comandos normales\n▸ Al completarla: recibes yenes + XP y se genera la siguiente inmediatamente\n▸ Cada **10 misiones completadas**: la dificultad y recompensa escalan\n▸ **¡Las misiones son infinitas!** La recompensa crece sin límite",
+                  inline: false },
+                { name: "📋 Tipos de Misiones del Pool",
+                  value: "▸ _Trabaja X veces en Shinjuku_ (trabajar)\n▸ _Completa X encargos de trabajo_ (trabajar)\n▸ _Derrota X hechiceros en PvP_ (kills)\n▸ _Exorciza X maldiciones_ (bossKills)\n▸ _Roba exitosamente X veces_ (robar)\n▸ _Usa X técnicas en combate_ (tecUsadas)\n▸ _Reclama X recompensa(s) diaria(s)_ (diario)\n▸ _Recoge X objetos del callejón_ (recoger)\n▸ _Medita X veces_ (meditar)\n\nTodos los tipos escalan en objetivo y recompensa con el nivel de misiones acumulado.",
+                  inline: false },
+                { name: "🏆 !logros — Sistema de 100 Logros",
+                  value: "Muestra tu porcentaje de completado (barra visual) y los próximos 5 logros desbloqueables.\nCada logro otorga **yenes y XP al desbloquearse automáticamente** sin que hagas nada extra.\n\n**10 categorías de logros:**\n▸ PvP Kills (10 logros) — 1 kill → 2,000,000 kills\n▸ Boss Kills (8 logros) — 1 boss → 500 bosses\n▸ Técnicas usadas (8 logros) — 1 uso → 2,000 usos\n▸ Grado / XP (8 logros) — alcanzar Grado 3 → 1,000,000 XP\n▸ Dedos de Sukuna (7 logros) — 1 dedo → 20 dedos + brazo\n▸ Yenes actuales (6 logros) — $10,000 → $10,000,000\n▸ Trabajo (6 logros) · Robo (6 logros) · Diario (4 logros)\n▸ Callejón (5 logros) · Inventario (5 logros) · Venta (4 logros)\n▸ Meditación (4 logros) · Pactos (2 logros) · Misiones (5 logros)\n▸ Meta-logros especiales y más",
+                  inline: false },
+                { name: "🏆 Ejemplos de Logros y Recompensas",
+                  value: "▸ **Primer Kill** → $2,000 + 500 XP\n▸ **100 Kills PvP** → $100,000 + 20,000 XP\n▸ **1,000 Kills PvP** → $1,000,000 + 200,000 XP\n▸ **Exorcista Legendario** (100 bosses) → $250,000 + 50,000 XP\n▸ **Recipiente Completo** (20 dedos) → $500,000 + 200,000 XP\n▸ **El Rey Completo** (20 dedos + brazo) → $1,000,000 + 500,000 XP\n▸ **Millonario** ($1M yenes) → +20,000 XP bonus\n▸ **Incansable** (500 misiones) → $1,000,000 + 500,000 XP",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 11/15 — Misiones & 100 Logros" });
+
+        // ── EMBED 12: SOCIAL — INTERCAMBIOS & DUELOS ────────────────────
+        const e12 = new EmbedBuilder()
+            .setTitle("🤝 SISTEMA SOCIAL — INTERCAMBIOS, DUELOS & PACTOS")
+            .setColor(0x00BFFF)
+            .addFields(
+                { name: "🥊 !retar @usuario & ✅ !aceptar",
+                  value: "**!retar @usuario** — Lanza un reto formal de duelo.\n▸ El rival tiene **60 segundos** para responder con `!aceptar`\n▸ Si no responde: el reto expira automáticamente\n▸ Solo puede haber un reto pendiente por jugador\n\n**!aceptar** — Acepta el reto pendiente que tienes.\n▸ Una vez aceptado, el combate es libre: usen técnicas normalmente\n▸ El que llegue a 0 HP pierde, el ganador recibe yenes y 5,000 XP",
+                  inline: false },
+                { name: "🤝 !pactar @usuario — Pacto de Sangre",
+                  value: "Forma un vínculo maldito con otro jugador.\n▸ **Efecto:** si alguien ataca al usuario pactado, **la mitad del daño** también te lo llevas tú\n▸ El pacto es **mutuo**: tú también proteges al otro y él a ti\n▸ Solo **un pacto activo** por jugador a la vez\n▸ El pacto persiste hasta que uno de los dos forme un nuevo pacto con alguien más\n▸ Úsalo para proteger a tu aliado principal en guerras de clanes",
+                  inline: false },
+                { name: "🔄 !intercambiar @usuario [item] — Proponer Trueque",
+                  value: "Ofrece un objeto de tu inventario a otro jugador.\n▸ La propuesta dura **5 minutos** antes de expirar\n▸ El receptor acepta con: `!aceptar_intercambio [nombre del item que él da]`\n▸ **Ambos** deben tener los objetos en su inventario al momento de confirmar\n▸ Si el proponente ya no tiene el ítem al momento de aceptar: el intercambio se cancela automáticamente\n\nEjemplo: `!intercambiar @usuario Nube Itinerante`",
+                  inline: false },
+                { name: "✅ !aceptar_intercambio [item] — Confirmar Trueque",
+                  value: "Acepta la propuesta de intercambio que tienes pendiente.\n▸ Indica el **nombre exacto del objeto que tú darás** a cambio\n▸ Ambos reciben el objeto del otro al instante\n▸ El intercambio cuenta para logros y misiones de 'intercambio'\n\nEjemplo: `!aceptar_intercambio Gafas de Maki`",
+                  inline: false },
+                { name: "📊 !estadisticas — Tu historial completo",
+                  value: "Muestra todas tus métricas de actividad:\n▸ Kills PvP totales · Bosses exorcizados\n▸ Técnicas usadas · Yenes actuales · XP total\n▸ Dedos de Sukuna · Veces trabajado · Veces robado con éxito\n▸ Recompensas diarias reclamadas · Objetos recogidos del callejón",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 12/15 — Sistema Social" });
+
+        // ── EMBED 13: DEDICADO A SEIS OJOS & MECÁNICAS AVANZADAS ────────
+        const e13 = new EmbedBuilder()
+            .setTitle("👁️ MECÁNICAS AVANZADAS — SEIS OJOS, DEDOS & COMBOS")
+            .setColor(0x00FFFF)
+            .addFields(
+                { name: "👁️ Pasiva Seis Ojos — Clan Gojo en Grado Especial",
+                  value: "Si perteneces al **clan Gojo** Y tienes **Grado Especial** (150,000 XP):\n▸ El costo de Energía de **todas tus técnicas** se reduce al **1% del costo original**\n▸ Ejemplo: `!vacio` normalmente cuesta 5,000 EN → con Seis Ojos cuesta solo **50 EN**\n▸ Esto te permite usar Dominios de Expansión con mucha más frecuencia\n▸ El cooldown de tiempo sigue siendo el mismo (24h para `!vacio`)\n▸ Es la pasiva más fuerte del juego. Busca el clan Gojo si quieres el máximo control de recursos.",
+                  inline: false },
+                { name: "☝️ Sistema de Dedos — Escalado Permanente",
+                  value: "Cada Dedo de Sukuna comprado con `!comer_dedo` ($100,000) aplica **permanentemente**:\n```\nDaño:        ×(1 + dedos × 0.10)\nHP máximo:   +100 por dedo\nEN máximo:   +500 por dedo\nXP bonus:    +15,000 al consumir\n```\n▸ Con 10 dedos: daño ×2.0 del base · +1,000 HP · +5,000 EN\n▸ Con 20 dedos: daño ×3.0 del base · +2,000 HP · +10,000 EN\n▸ Con 20 dedos: ganas el rol **Rey de las Maldiciones** en Discord\n▸ Costo total: **$2,000,000 Yenes** para los 20 dedos",
+                  inline: false },
+                { name: "⚔️ Fórmulas de Combate Completas",
+                  value: "**Daño PvP base:**\n`D = técnica.daño × grado.multiplicador × (1 + dedos × 0.10)`\n\n**Con Nube Itinerante:** `D × 1.50` (o `× 1.75` vs Zenin)\n**Con Brazo de Sukuna:** `D × 3.0` adicional\n**Con Lanza Invertida:** ignora cualquier reducción de defensa\n\n**Daño a Bosses (`!exorcizar`):**\n`D = 100 × grado.multiplicador × (1 + dedos × 0.10)`\n**Con Gafas de Maki:** `D × 1.20`\n**Con Brazo de Sukuna:** `D × 3.0`\n\n**Daño Pacto:** Si el objetivo tiene pacto con alguien, ese aliado también recibe `D / 2`",
+                  inline: false },
+                { name: "💡 Combo Máximo de Daño",
+                  value: "Para maximizar el daño en un solo ataque:\n1. **Grado Especial** (×30 multiplicador)\n2. **20 Dedos de Sukuna** (×3.0 adicional)\n3. **Brazo de Sukuna equipado** (×3.0 sobre todo)\n4. Técnica de máximo daño de tu clan\n\nEjemplo con Sukuna:\n`!corte_mundo` (d=9,999) × 30 × 3.0 × 3.0 = **2,699,730 de daño teórico**\n_(En PvP el rival tiene HP finito, pero el concepto aplica)_",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 13/15 — Mecánicas Avanzadas & Seis Ojos" });
+
+        // ── EMBED 14: COMANDOS ADMIN ─────────────────────────────────────
+        const e14 = new EmbedBuilder()
+            .setTitle("🛠️ COMANDOS DE ADMINISTRADOR")
+            .setDescription("Solo disponibles para miembros con permiso de **Administrador** en el servidor.")
+            .setColor(0xFF6600)
+            .addFields(
+                { name: "📺 Configuración de Canales",
+                  value: "`!setup_maldiciones` — Designa este canal como zona de spawn de bosses (cada 30 min)\n`!setup_callejon` — Designa este canal como zona del callejón (cada 15 min)\n`!setup_trabajo` — Solo se podrá usar `!trabajar` en este canal\n`!setup_combate` — Solo se podrán usar técnicas de combate en este canal\n`!setup_tienda` — Solo `!tienda` y `!comprar` funcionarán en este canal\n`!setup_perfil` — Solo `!perfil`, `!inventario` y `!ranking` funcionarán aquí\n`!quitar_canal [zona]` — Elimina la restricción de canal de esa zona\n`!ver_canales` — Muestra todos los canales configurados actualmente\n\nZonas válidas: `trabajo`, `combate`, `tienda`, `perfil`, `maldiciones`, `callejon`",
+                  inline: false },
+                { name: "💴 Gestión de Yenes",
+                  value: "`!add_yenes @usuario [cantidad]` — Añade yenes al usuario\n`!remove_yenes @usuario [cantidad]` — Quita yenes al usuario (mínimo 0)",
+                  inline: false },
+                { name: "✨ Gestión de XP",
+                  value: "`!add_xp @usuario [cantidad]` — Añade XP al usuario\n`!remove_xp @usuario [cantidad]` — Quita XP al usuario (mínimo 0)",
+                  inline: false },
+                { name: "❤️ Gestión de HP & Estado",
+                  value: "`!set_hp @usuario [valor]` — Establece el HP del usuario al valor indicado\n`!quitar_objeto @usuario [nombre exacto]` — Elimina un objeto del inventario del usuario\n`!quitar_sellado @usuario` — Elimina el sello manualmente y restaura sus roles\n`!reiniciar @usuario` — Reinicia completamente los datos del usuario (¡irreversible!)",
+                  inline: false },
+                { name: "⚠️ Notas de Administración",
+                  value: "▸ Los comandos de admin no tienen confirmación: se ejecutan al instante\n▸ `!reiniciar` borra todos los datos del usuario (yenes, XP, dedos, logros...)\n▸ El bot solo opera en el servidor autorizado por ID. Si lo añades a otro servidor, se desconecta automáticamente\n▸ Los datos se guardan en `shinjuku_data.json` y `shinjuku_config.json` en el servidor donde corre el bot",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 14/15 — Comandos de Administrador" });
+
+        // ── EMBED 15: TIPS, RESUMEN & CHEAT SHEET ───────────────────────
+        const e15 = new EmbedBuilder()
+            .setTitle("💡 TIPS AVANZADOS & RESUMEN COMPLETO DE COMANDOS")
+            .setColor(0xFFD700)
+            .addFields(
+                { name: "🚀 Guía de Inicio Rápido (nuevos jugadores)",
+                  value: "1. `!perfil` — Verifica tu grado y stats\n2. `!tecnicas` — Memoriza los comandos de tu clan\n3. `!trabajar` cada hora → fuente de ingresos estable\n4. `!diario` cada día → yenes + XP gratis\n5. `!exorcizar` cuando haya boss → mejor XP del juego\n6. `!mision` → activa misiones para ganas extra\n7. Ahorra $100,000 → `!comer_dedo` → más poder permanente\n8. Apunta a **Grado Especial** (150,000 XP) para el máximo potencial",
+                  inline: false },
+                { name: "💡 Tips Avanzados",
+                  value: "▸ **Los Dominios tienen 24h de CD**: úsalos solo cuando estés seguro de que no habrá choque\n▸ **El clan Sukuna tiene `!corte_mundo`** (9,999d): el mayor daño base del juego\n▸ **Zenin tiene `!toji_slash` y `!cadena`** con costos de energía mínimos (20 EN): ideal para combate sostenido\n▸ **Maldición tiene 4 Dominios**: el más versátil en guerra de dominios\n▸ **El Brazo de Sukuna + 20 dedos** es el combo más caro pero más poderoso: $2,750,000 total\n▸ **Roba a jugadores con más XP que tú** con cautela: menor % de éxito, mayor penalización si fallas\n▸ **El callejón**: activa notificaciones del canal para ser siempre el primero en recoger",
+                  inline: false },
+                { name: "📋 Resumen de Todos los Comandos",
+                  value: "**Perfil:** `!perfil` `!inventario` `!estadisticas` `!clan` `!tecnicas` `!ranking [tipo]` `!historial`\n**Combate:** `![tecnica] @user` `!retar @user` `!aceptar` `!exorcizar` `!maldiciones` `!meditar`\n**Economía:** `!trabajar` `!diario` `!robar @user` `!donar @user [n]` `!recuperar`\n**Tienda:** `!tienda` `!comprar [key]` `!vender [nombre]` `!comer_dedo` `!comprar_reroll`\n**Equipo:** `!equipar [nombre]` `!recoger`\n**Sellos:** `!usar_sello [variante] @user`\n**Social:** `!pactar @user` `!intercambiar @user [item]` `!aceptar_intercambio [item]`\n**Progreso:** `!mision` `!logros`\n**Admin:** `!setup_*` `!quitar_canal` `!ver_canales` `!add/remove_yenes/xp` `!set_hp` `!quitar_objeto` `!quitar_sellado` `!reiniciar`",
+                  inline: false },
+                { name: "⏰ Temporizadores del Servidor (automáticos)",
+                  value: "▸ **Boss spawn:** cada **30 minutos** en el canal de maldiciones\n▸ **Callejón spawn:** cada **15 minutos** en el canal del callejón (dura 10 min)\n▸ **Regen pasiva:** cada **60 segundos** (+10 HP, +5 EN a todos)\n▸ **Tu `!trabajar`:** cada **1 hora** por jugador\n▸ **Tu `!diario`:** cada **24 horas** por jugador\n▸ **Tu `!meditar`:** cada **2 horas** por jugador\n▸ **Tu `!robar`:** cada **2 horas** por jugador",
+                  inline: false }
+            )
+            .setFooter({ text: "📖 Página 15/15 — ¡120 técnicas, 7 clanes, 100 logros te esperan! 🏯 Shinjuku Showdown v10.0" });
+
+        // ── ENVÍO: reply al usuario + mensajes permanentes en canal ────
+        try { await msg.delete(); } catch { }
+
+        await msg.channel.send({ embeds: [e1]  });
+        await msg.channel.send({ embeds: [e2]  });
+        await msg.channel.send({ embeds: [e3]  });
+        await msg.channel.send({ embeds: [e4]  });
+        await msg.channel.send({ embeds: [e5]  });
+        await msg.channel.send({ embeds: [e6]  });
+        await msg.channel.send({ embeds: [e7]  });
+        await msg.channel.send({ embeds: [e8]  });
+        await msg.channel.send({ embeds: [e9]  });
+        await msg.channel.send({ embeds: [e10] });
+        await msg.channel.send({ embeds: [e11] });
+        await msg.channel.send({ embeds: [e12] });
+        await msg.channel.send({ embeds: [e13] });
+        await msg.channel.send({ embeds: [e14] });
+        void msg.channel.send({ embeds: [e15] });
+
+        return;
     }
 
     // ==========================================
